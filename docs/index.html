@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>go-gradle-cache — Remote build cache server for Gradle</title>
+  <meta name="description" content="A production-ready remote build cache server for Gradle. Written in Go. Supports local filesystem and S3-compatible storage. Prometheus metrics included.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #070a09;
+      --bg-raised: #0c110f;
+      --bg-surface: #111916;
+      --bg-glass: rgba(12, 17, 15, 0.65);
+      --border: #1a2420;
+      --border-hover: #2d3d36;
+      --border-glow: rgba(26, 188, 156, 0.18);
+      --text: #f0f5f3;
+      --text-secondary: #94a89e;
+      --text-tertiary: #5a6e64;
+      --accent: #1abc9c;
+      --accent-dim: #16a085;
+      --accent-bright: #2ecc71;
+      --accent-glow: rgba(26, 188, 156, 0.15);
+      --accent-glow-strong: rgba(26, 188, 156, 0.35);
+      --navy: #1a2a3a;
+      --radius-sm: 8px;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --shadow-sm: 0 0 0 1px rgba(255,255,255,0.04);
+      --shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 24px 60px -16px rgba(0,0,0,0.6);
+      --shadow-glow: 0 0 0 1px var(--border-glow), 0 24px 60px -16px rgba(0,0,0,0.5), 0 0 40px -10px var(--accent-glow);
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 90px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    ::selection {
+      background: rgba(26, 188, 156, 0.3);
+      color: #fff;
+    }
+
+    h1, h2, h3, h4 {
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+      font-weight: 700;
+    }
+
+    /* ========== BACKGROUND EFFECTS ========== */
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      opacity: 0.03;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ========== NAV ========== */
+    nav {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 50;
+      border-bottom: 1px solid transparent;
+      background: transparent;
+      transition: all 0.4s var(--ease-out-expo);
+    }
+
+    nav.scrolled {
+      background: rgba(7, 10, 9, 0.75);
+      backdrop-filter: blur(16px) saturate(1.2);
+      border-bottom-color: var(--border);
+    }
+
+    .nav-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 28px;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text);
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    .logo:hover { opacity: 0.8; }
+
+    .logo img {
+      height: 36px;
+      width: auto;
+      display: block;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s;
+      position: relative;
+    }
+
+    .nav-links a::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 0;
+      width: 0;
+      height: 1.5px;
+      background: var(--accent);
+      transition: width 0.3s var(--ease-out-expo);
+      border-radius: 2px;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a:hover::after { width: 100%; }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s var(--ease-out-expo);
+    }
+
+    .nav-cta:hover {
+      border-color: var(--border-hover);
+      background: var(--bg-raised);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ========== SECTIONS ========== */
+    section {
+      padding: 140px 28px;
+      position: relative;
+    }
+
+    .section-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      margin-bottom: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-label::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow-strong);
+    }
+
+    .section-header {
+      max-width: 640px;
+      margin-bottom: 72px;
+    }
+
+    .section-header h2 {
+      font-size: 2.6rem;
+      margin-bottom: 18px;
+      font-weight: 800;
+    }
+
+    .section-header p {
+      color: var(--text-secondary);
+      font-size: 1.15rem;
+      line-height: 1.7;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin: 0 auto;
+      max-width: 1140px;
+    }
+
+    /* ========== HERO ========== */
+    .hero {
+      padding-top: 180px;
+      padding-bottom: 140px;
+      overflow: hidden;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+    }
+
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .hero-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0;
+      animation: orbFloat 20s ease-in-out infinite, orbFadeIn 1.5s var(--ease-out-expo) forwards;
+    }
+
+    .hero-orb-1 {
+      width: 500px;
+      height: 500px;
+      background: rgba(26, 188, 156, 0.18);
+      top: -10%;
+      left: 20%;
+      animation-delay: 0s, 0.2s;
+    }
+
+    .hero-orb-2 {
+      width: 400px;
+      height: 400px;
+      background: rgba(22, 160, 133, 0.12);
+      bottom: 10%;
+      right: 10%;
+      animation-delay: -5s, 0.4s;
+    }
+
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(26, 188, 156, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(26, 188, 156, 0.03) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 30%, transparent 70%);
+    }
+
+    .hero-inner {
+      position: relative;
+      max-width: 1140px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 100px;
+      align-items: center;
+    }
+
+    .hero-brand {
+      margin-bottom: 32px;
+      opacity: 0;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.1s forwards;
+    }
+
+    .hero-brand img {
+      height: 80px;
+      width: auto;
+      filter: drop-shadow(0 0 40px rgba(26, 188, 156, 0.15));
+      transition: transform 0.5s var(--ease-out-expo);
+    }
+
+    .hero-brand img:hover {
+      transform: scale(1.03);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--accent);
+      margin-bottom: 24px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      background: rgba(26, 188, 156, 0.06);
+      border: 1px solid rgba(26, 188, 156, 0.12);
+      width: fit-content;
+      opacity: 0;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.2s forwards;
+    }
+
+    h1 {
+      font-size: 3.6rem;
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.035em;
+      margin-bottom: 24px;
+      opacity: 0;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.3s forwards;
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-secondary);
+      line-height: 1.75;
+      max-width: 500px;
+      margin-bottom: 40px;
+      opacity: 0;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.4s forwards;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.3s var(--ease-out-expo);
+      cursor: pointer;
+      border: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent, rgba(255,255,255,0.1), transparent);
+      transform: translateX(-100%);
+      transition: transform 0.5s var(--ease-out-expo);
+    }
+
+    .btn:hover::before { transform: translateX(100%); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      color: #050f0c;
+      box-shadow: 0 4px 24px rgba(26, 188, 156, 0.25), 0 0 0 1px rgba(26, 188, 156, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(26, 188, 156, 0.35), 0 0 0 1px rgba(26, 188, 156, 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--border-hover);
+      background: var(--bg-raised);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.5s forwards;
+    }
+
+    /* ========== TERMINAL ========== */
+    .terminal {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.75;
+      box-shadow: var(--shadow-glow);
+      opacity: 0;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.6s forwards, terminalPulse 4s ease-in-out infinite;
+      transition: transform 0.4s var(--ease-out-expo), box-shadow 0.4s var(--ease-out-expo);
+    }
+
+    .terminal:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-glow), 0 0 60px -20px var(--accent-glow-strong);
+    }
+
+    @keyframes terminalPulse {
+      0%, 100% { box-shadow: var(--shadow-glow); }
+      50% { box-shadow: var(--shadow-glow), 0 0 50px -15px var(--accent-glow); }
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.015);
+    }
+
+    .t-dot { width: 12px; height: 12px; border-radius: 50%; transition: transform 0.2s; }
+    .terminal:hover .t-dot { transform: scale(1.1); }
+    .t-dot-r { background: #ff5f56; }
+    .t-dot-y { background: #ffbd2e; }
+    .t-dot-g { background: #27c93f; }
+    .t-title { margin-left: 10px; color: var(--text-tertiary); font-size: 0.72rem; }
+
+    .terminal-body { padding: 24px 26px; }
+    .terminal-body .c { color: var(--text-tertiary); }
+    .terminal-body .k { color: var(--accent); }
+    .terminal-body .s { color: #e5c07b; }
+    .terminal-body .v { color: #61afef; }
+
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.2em;
+      background: var(--accent);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+      border-radius: 1px;
+    }
+
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ========== CARDS ========== */
+    .card {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      transition: all 0.4s var(--ease-out-expo);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(26,188,156,0.2), transparent);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .card:hover {
+      transform: translateY(-6px);
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow), 0 0 40px -12px var(--accent-glow);
+    }
+
+    .card:hover::before { opacity: 1; }
+
+    .card h3 {
+      font-size: 1.05rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+    }
+
+    .card p {
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    .card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(26,188,156,0.1), rgba(22,160,133,0.05));
+      border: 1px solid rgba(26,188,156,0.12);
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      flex-shrink: 0;
+      transition: all 0.3s var(--ease-out-expo);
+    }
+
+    .card:hover .card-icon {
+      background: linear-gradient(135deg, rgba(26,188,156,0.15), rgba(22,160,133,0.1));
+      transform: scale(1.08);
+      box-shadow: 0 0 20px -4px var(--accent-glow);
+    }
+
+    .card-icon svg { width: 20px; height: 20px; }
+
+    /* ========== GRIDS ========== */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    /* ========== API ENDPOINTS ========== */
+    .endpoint {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 22px 0;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.2s;
+      margin: 0 -12px;
+      padding-left: 12px;
+      padding-right: 12px;
+      border-radius: var(--radius-sm);
+    }
+
+    .endpoint:hover {
+      background: rgba(26, 188, 156, 0.02);
+    }
+
+    .endpoint:last-child { border-bottom: none; }
+
+    .method {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 6px;
+      background: rgba(26, 188, 156, 0.08);
+      color: var(--accent);
+      white-space: nowrap;
+      border: 1px solid rgba(26, 188, 156, 0.1);
+      transition: all 0.2s;
+    }
+
+    .endpoint:hover .method {
+      background: rgba(26, 188, 156, 0.12);
+      box-shadow: 0 0 12px -2px var(--accent-glow);
+    }
+
+    .method.get { background: rgba(97, 175, 239, 0.08); color: #61afef; border-color: rgba(97, 175, 239, 0.1); }
+    .endpoint:hover .method.get { background: rgba(97, 175, 239, 0.12); box-shadow: 0 0 12px -2px rgba(97, 175, 239, 0.15); }
+
+    .endpoint-info h4 {
+      font-size: 0.95rem;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    .endpoint-info p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+
+    /* ========== CODE BLOCKS ========== */
+    .code-block {
+      position: relative;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .code-block:hover {
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .code-block pre {
+      padding: 28px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.75;
+      color: var(--text-secondary);
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-tertiary);
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out-expo);
+      font-family: inherit;
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    .code-block:hover .copy-btn {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .copy-btn:hover {
+      color: var(--text);
+      border-color: var(--border-hover);
+      background: var(--bg-raised);
+    }
+
+    .copy-btn.copied {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(26, 188, 156, 0.06);
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ========== TABS ========== */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      position: relative;
+    }
+
+    .tab {
+      padding: 10px 18px;
+      border-radius: 10px;
+      background: transparent;
+      border: none;
+      color: var(--text-tertiary);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s var(--ease-out-expo);
+      font-family: inherit;
+      position: relative;
+    }
+
+    .tab:hover { color: var(--text-secondary); }
+    .tab.active {
+      background: var(--bg-surface);
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .tab-panel {
+      display: none;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.3s var(--ease-out-expo), transform 0.3s var(--ease-out-expo);
+    }
+
+    .tab-panel.active {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ========== DIAGRAM ========== */
+    .diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 56px 40px;
+      flex-wrap: wrap;
+    }
+
+    .d-box {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 36px;
+      text-align: center;
+      min-width: 220px;
+      max-width: 280px;
+      transition: all 0.4s var(--ease-out-expo);
+      position: relative;
+    }
+
+    .d-box::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: var(--radius);
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(26,188,156,0.15), transparent 50%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .d-box:hover {
+      transform: translateY(-4px);
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow), 0 0 40px -12px var(--accent-glow);
+    }
+
+    .d-box:hover::before { opacity: 1; }
+
+    .d-box h4 {
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+    }
+
+    .d-box p {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .d-arrow {
+      color: var(--accent);
+      font-size: 1.3rem;
+      font-family: 'JetBrains Mono', monospace;
+      opacity: 0.6;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+
+    .diagram:hover .d-arrow {
+      opacity: 1;
+      transform: translateX(4px);
+    }
+
+    /* ========== METRICS ========== */
+    .metric-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      transition: background 0.2s;
+      margin: 0 -12px;
+      padding-left: 12px;
+      padding-right: 12px;
+      border-radius: var(--radius-sm);
+    }
+
+    .metric-row:hover {
+      background: rgba(26, 188, 156, 0.02);
+    }
+
+    .metric-row:last-child { border-bottom: none; }
+
+    .metric-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--accent);
+      transition: text-shadow 0.2s;
+    }
+
+    .metric-row:hover .metric-name {
+      text-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .metric-desc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      text-align: right;
+    }
+
+    /* ========== COMPARE ========== */
+    .compare-item {
+      padding: 12px 0;
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      line-height: 1.6;
+    }
+
+    .compare-item:last-child { border-bottom: none; }
+
+    .compare-item strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ========== CTA ========== */
+    .cta-logo {
+      margin-bottom: 28px;
+    }
+
+    .cta-logo img {
+      height: 64px;
+      width: auto;
+      opacity: 0.9;
+      transition: all 0.5s var(--ease-out-expo);
+      filter: drop-shadow(0 0 30px rgba(26, 188, 156, 0.1));
+    }
+
+    .cta-logo img:hover {
+      opacity: 1;
+      transform: scale(1.05);
+      filter: drop-shadow(0 0 40px rgba(26, 188, 156, 0.2));
+    }
+
+    /* ========== FOOTER ========== */
+    footer {
+      padding: 56px 28px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      color: var(--text-tertiary);
+      font-size: 0.82rem;
+    }
+
+    footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    footer a:hover { color: var(--accent); text-decoration: underline; }
+
+    /* ========== SCROLL REVEAL ========== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.8s var(--ease-out-expo), transform 0.8s var(--ease-out-expo);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-delay-1 { transition-delay: 0.08s; }
+    .reveal-delay-2 { transition-delay: 0.16s; }
+    .reveal-delay-3 { transition-delay: 0.24s; }
+    .reveal-delay-4 { transition-delay: 0.32s; }
+    .reveal-delay-5 { transition-delay: 0.40s; }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 900px) {
+      .hero-inner { grid-template-columns: 1fr; gap: 56px; }
+      h1 { font-size: 2.6rem; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .diagram { flex-direction: column; }
+      .d-arrow { transform: rotate(90deg); }
+      .section-header h2 { font-size: 2rem; }
+      section { padding: 100px 24px; }
+      .hero-brand img { height: 64px; }
+      .hero { min-height: auto; padding-top: 140px; }
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 2.1rem; }
+      .logo img { height: 30px; }
+      .hero-brand img { height: 56px; }
+    }
+
+    /* ========== KEYFRAMES ========== */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes orbFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(30px, -30px) scale(1.05); }
+      50% { transform: translate(-20px, 20px) scale(0.95); }
+      75% { transform: translate(20px, 10px) scale(1.02); }
+    }
+
+    @keyframes orbFadeIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* ========== GLOW LINE ========== */
+    .glow-line {
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--accent) 20%, var(--accent-bright) 50%, var(--accent) 80%, transparent 100%);
+      opacity: 0.15;
+      position: relative;
+    }
+
+    .glow-line::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 60%;
+      height: 20px;
+      background: radial-gradient(ellipse, var(--accent-glow-strong), transparent 70%);
+      filter: blur(8px);
+    }
+  </style>
+</head>
+<body>
+
+<div class="grain"></div>
+
+<nav id="navbar">
+  <div class="nav-inner">
+    <a href="#" class="logo">
+      <img src="logo.png" alt="go-gradle-cache logo">
+      <span>Gradle Cache Server</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#api">API</a></li>
+      <li><a href="#storage">Storage</a></li>
+      <li><a href="#observability">Metrics</a></li>
+      <li><a href="#deploy">Deploy</a></li>
+    </ul>
+    <a class="nav-cta" href="https://github.com/yourusername/gradle-cache-server" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-bg">
+    <div class="hero-orb hero-orb-1"></div>
+    <div class="hero-orb hero-orb-2"></div>
+    <div class="hero-grid"></div>
+  </div>
+  <div class="section-inner hero-inner">
+    <div>
+      <div class="eyebrow">Production-ready remote cache</div>
+      <h1>Cut build times with a dedicated cache server.</h1>
+      <p>
+        A focused, high-performance remote build cache for Gradle. Implements the standard HTTP build cache protocol with pluggable storage, built-in observability, and zero external dependencies beyond your chosen backend.
+      </p>
+      <div class="hero-actions">
+        <a href="#deploy" class="btn btn-primary">Deploy in minutes</a>
+        <a href="#api" class="btn btn-secondary">Explore the API</a>
+      </div>
+    </div>
+    <div class="terminal">
+      <div class="terminal-header">
+        <span class="t-dot t-dot-r"></span>
+        <span class="t-dot t-dot-y"></span>
+        <span class="t-dot t-dot-g"></span>
+        <span class="t-title">bash</span>
+      </div>
+      <div class="terminal-body">
+        <span class="c"># Start serving cache entries locally</span><br>
+        <span class="k">$</span> go run ./app <span class="v">-storage</span>=local <span class="v">-dir</span>=./cache<br><br>
+        <span class="c"># Or point it at S3</span><br>
+        <span class="k">$</span> go run ./app <span class="v">-storage</span>=s3 \
+        <br>&nbsp;&nbsp;<span class="v">-s3-bucket</span>=<span class="s">my-cache</span> \
+        <br>&nbsp;&nbsp;<span class="v">-s3-region</span>=<span class="s">us-east-1</span><span class="cursor"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="glow-line"></div>
+
+<section>
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <div class="section-label">Architecture</div>
+      <h2>Simple, focused, and stateless.</h2>
+      <p>The server speaks plain HTTP. Gradle clients push and pull cache entries through a predictable REST surface. Storage is pluggable, metrics are automatic, and there is no coordination between replicas.</p>
+    </div>
+    <div class="diagram reveal reveal-delay-2">
+      <div class="d-box">
+        <h4>Gradle Client</h4>
+        <p>HEAD to check, GET to fetch, PUT to store. Per-project cache isolation via path prefixes.</p>
+      </div>
+      <div class="d-arrow">→</div>
+      <div class="d-box">
+        <h4>Cache Server</h4>
+        <p>Go HTTP server with request instrumentation, path validation, and configurable upload limits.</p>
+      </div>
+      <div class="d-arrow">→</div>
+      <div class="d-box">
+        <h4>Storage Backend</h4>
+        <p>Local filesystem with atomic writes, or S3-compatible object store with path-style endpoint support.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="glow-line"></div>
+
+<section id="api" style="background: var(--bg-raised); border-top: 1px solid var(--border);">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <div class="section-label">API</div>
+      <h2>Three endpoints. Nothing more.</h2>
+      <p>The server implements the standard Gradle HTTP build cache contract. Each cache entry is addressed by a <code>cacheID</code> and an <code>entryKey</code>, forming the path <code>/cache/{cacheID}/{entryKey}</code>.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card reveal reveal-delay-1" style="padding: 0; overflow: hidden;">
+        <div style="padding: 28px 32px; border-bottom: 1px solid var(--border);">
+          <h3 style="margin-bottom: 0;">
+            <span class="card-icon" style="margin-bottom: 0;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </span>
+            Endpoints
+          </h3>
+        </div>
+        <div style="padding: 10px 32px;">
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <div class="endpoint-info">
+              <h4>/health</h4>
+              <p>Liveness and readiness probe. Returns 200 with body "ok".</p>
+            </div>
+          </div>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <div class="endpoint-info">
+              <h4>/metrics</h4>
+              <p>Prometheus exposition format. All counters, histograms, and gauges.</p>
+            </div>
+          </div>
+          <div class="endpoint">
+            <span class="method">HEAD</span>
+            <div class="endpoint-info">
+              <h4>/cache/{id}/{key}</h4>
+              <p>Check existence and size. Emits hit/miss metrics per cache ID.</p>
+            </div>
+          </div>
+          <div class="endpoint">
+            <span class="method get">GET</span>
+            <div class="endpoint-info">
+              <h4>/cache/{id}/{key}</h4>
+              <p>Retrieve entry. Uses ServeContent for local files to support range requests. Streams S3 bodies directly.</p>
+            </div>
+          </div>
+          <div class="endpoint">
+            <span class="method">PUT</span>
+            <div class="endpoint-info">
+              <h4>/cache/{id}/{key}</h4>
+              <p>Store entry. Rejects empty bodies and payloads exceeding the configured max upload size.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card reveal reveal-delay-2" style="padding: 0; overflow: hidden;">
+        <div style="padding: 28px 32px; border-bottom: 1px solid var(--border);">
+          <h3 style="margin-bottom: 0;">
+            <span class="card-icon" style="margin-bottom: 0;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            Path Security
+          </h3>
+        </div>
+        <div style="padding: 32px;">
+          <p style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.75; margin-bottom: 24px;">
+            The parser validates every incoming path before it reaches storage. Directory traversal is rejected at the edge.
+          </p>
+          <div class="code-block" style="border: none; background: var(--bg-surface);">
+            <pre><span class="c">// Rejected patterns</span>
+/cache/myid/../secret    <span class="c">// contains ".."</span>
+/cache/myid\secret       <span class="c">// contains backslash</span>
+/cache/myid/             <span class="c">// empty entry key</span>
+/cache//key              <span class="c">// empty cache ID</span></pre>
+          </div>
+          <p style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.75; margin-top: 24px;">
+            Storage keys are derived as <code style="color: var(--accent);">cacheID/entryKey</code>. No user input ever reaches the filesystem or S3 client unsanitized.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="glow-line"></div>
+
+<section id="storage">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <div class="section-label">Storage</div>
+      <h2>Swap backends without changing code.</h2>
+      <p>Both implementations satisfy the same three-method interface. Switching from local disk to S3 is a single flag change.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card reveal reveal-delay-1">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 24px;">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <h3 style="margin-bottom: 3px;">Local Filesystem</h3>
+            <p style="font-size: 0.82rem; color: var(--text-tertiary); margin: 0;">Fastest path for single-node or NFS setups</p>
+          </div>
+        </div>
+        <div class="compare-item">
+          <strong>Atomic writes</strong> — data is written to a temp file and renamed into place. Partial writes are never visible to readers.
+        </div>
+        <div class="compare-item">
+          <strong>Concurrency-safe</strong> — read-write mutex protects metadata operations while allowing concurrent reads.
+        </div>
+        <div class="compare-item">
+          <strong>Seekable streams</strong> — local files expose <code>io.ReadSeeker</code>, so the server can use <code>http.ServeContent</code> for automatic range request support and correct <code>Last-Modified</code> headers.
+        </div>
+      </div>
+
+      <div class="card reveal reveal-delay-2">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 24px;">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15c.7-1.2 1-2.5.7-3.9-.6-2-2.4-3.5-4.4-3.5h-1.2c-.7-3.1-3.5-5.2-6.6-5.2-3.8 0-7 3-7.2 6.9 0 .5.1 1 .2 1.5-2.1.7-3.6 2.6-3.6 4.9 0 2.9 2.3 5.2 5.2 5.2H19c2.2 0 4-1.8 4-4 0-1-.4-1.9-1-2.6z"/></svg>
+          </div>
+          <div>
+            <h3 style="margin-bottom: 3px;">S3-Compatible</h3>
+            <p style="font-size: 0.82rem; color: var(--text-tertiary); margin: 0;">AWS S3, MinIO, Wasabi, DigitalOcean Spaces</p>
+          </div>
+        </div>
+        <div class="compare-item">
+          <strong>AWS SDK v2</strong> — uses the standard credential chain: environment variables, shared credentials file, then IAM role.
+        </div>
+        <div class="compare-item">
+          <strong>MinIO ready</strong> — custom endpoints are supported with path-style URLs, so on-premise MinIO clusters work out of the box.
+        </div>
+        <div class="compare-item">
+          <strong>Key prefixes</strong> — optional <code>S3_PREFIX</code> lets you share a single bucket across multiple cache servers or environments.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="glow-line"></div>
+
+<section id="observability" style="background: var(--bg-raised); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <div class="section-label">Observability</div>
+      <h2>Metrics that matter.</h2>
+      <p>Every request is instrumented with latency histograms, per-cache-ID counters, and in-flight gauges. No sidecar required.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card reveal reveal-delay-1" style="padding: 0; overflow: hidden;">
+        <div style="padding: 28px 32px; border-bottom: 1px solid var(--border);">
+          <h3 style="margin-bottom: 0;">Prometheus Metrics</h3>
+        </div>
+        <div style="padding: 10px 32px;">
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_requests_total</span>
+            <span class="metric-desc">Counter by method, handler, status, cache_id</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_request_duration_seconds</span>
+            <span class="metric-desc">Latency histogram with default buckets</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_hits_total</span>
+            <span class="metric-desc">Per-cache-ID hit counter</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_misses_total</span>
+            <span class="metric-desc">Per-cache-ID miss counter</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_entries_stored_total</span>
+            <span class="metric-desc">Successful PUTs per cache ID</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_stored_bytes_total</span>
+            <span class="metric-desc">Bytes accepted per cache ID</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_served_bytes_total</span>
+            <span class="metric-desc">Bytes served per cache ID</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-name">gradle_cache_in_flight_requests</span>
+            <span class="metric-desc">Current active HTTP requests</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card reveal reveal-delay-2" style="margin-bottom: 24px;">
+          <h3>
+            <span class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+            Request Instrumentation
+          </h3>
+          <p>A custom response writer captures the exact HTTP status code for every handler. Request duration, method, and cache ID are recorded before the connection closes. In-flight requests are tracked with a gauge that increments on entry and decrements on exit.</p>
+        </div>
+        <div class="card reveal reveal-delay-3">
+          <h3>
+            <span class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </span>
+            Graceful Shutdown
+          </h3>
+          <p>On SIGINT or SIGTERM, the server stops accepting new connections and waits up to 10 seconds for in-flight requests to finish. No partial cache entries, no dropped uploads.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="glow-line"></div>
+
+<section id="deploy">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <div class="section-label">Deployment</div>
+      <h2>Run it anywhere.</h2>
+      <p>Single static binary, a 15 MB Docker image, a production Helm chart, or raw Kubernetes manifests with HPA and health probes.</p>
+    </div>
+
+    <div class="tabs reveal reveal-delay-1">
+      <button class="tab active" data-tab="run">Binary</button>
+      <button class="tab" data-tab="docker">Docker</button>
+      <button class="tab" data-tab="helm">Helm</button>
+      <button class="tab" data-tab="k8s">Raw K8s</button>
+      <button class="tab" data-tab="gradle">Gradle Client</button>
+    </div>
+
+    <div class="tab-panel active" id="panel-run">
+      <div class="code-block">
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre>make build
+
+# Local filesystem
+./go-gradle-cache -storage=local -dir=./cache-data
+
+# S3
+export STORAGE_TYPE=s3
+export S3_BUCKET=my-gradle-cache
+export S3_REGION=us-east-1
+./go-gradle-cache
+
+# With upload limit (10 MiB)
+./go-gradle-cache -storage=local -dir=./cache -max-upload=10485760</pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-docker">
+      <div class="code-block">
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre># Multi-stage Alpine build (~15 MB final image)
+docker build -t gradle-cache-server .
+
+# Non-root user, CA certs included for S3 TLS
+docker run -p 8080:8080 \
+  -e STORAGE_TYPE=s3 \
+  -e S3_BUCKET=my-cache \
+  -e S3_REGION=us-east-1 \
+  -e AWS_ACCESS_KEY_ID=... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  gradle-cache-server</pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-helm">
+      <div class="code-block">
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre># Add the Helm repo (after first chart release)
+helm repo add go-gradle-cache https://yourusername.github.io/gradle-cache-server
+helm repo update
+
+# Install with default values (S3 storage, 2 replicas, autoscaling)
+helm install gradle-cache go-gradle-cache/go-gradle-cache
+
+# Or install with a custom values file
+helm install gradle-cache go-gradle-cache/go-gradle-cache \
+  -f my-values.yaml
+
+# Upgrade after changing values
+helm upgrade gradle-cache go-gradle-cache/go-gradle-cache \
+  -f my-values.yaml</pre>
+      </div>
+      <div style="margin-top: 20px;" class="code-block">
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre># my-values.yaml — configure storage, scaling, and resources
+config:
+  storageType: s3
+  s3Bucket: my-gradle-cache
+  s3Region: us-east-1
+  s3Endpoint: ""          # set for MinIO
+
+replicaCount: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+persistence:
+  enabled: false          # enable for local storage with PVC
+  size: 10Gi
+
+resources:
+  requests:
+    memory: 128Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: 1000m
+
+secret:
+  data:
+    AWS_ACCESS_KEY_ID: ""
+    AWS_SECRET_ACCESS_KEY: ""</pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-k8s">
+      <div class="code-block">
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre># Prefer Helm? The chart is the recommended path.
+# Raw manifests are available for custom tooling:
+kubectl apply -f k8s/eks-deployment.yaml
+
+# What's inside:
+# - Namespace, ServiceAccount, ConfigMap, Secret
+# - Deployment (2 replicas, RollingUpdate, 0 maxUnavailable)
+# - ClusterIP Service
+# - HorizontalPodAutoscaler (2-10 replicas, 70% CPU target)
+# - Liveness and readiness probes on /health
+# - IRSA annotation support for AWS credential-free S3 access</pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-gradle">
+      <div class="code-block">
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre>// settings.gradle.kts
+buildCache {
+    local { isEnabled = true }
+    remote&lt;HttpBuildCache&gt; {
+        url = uri("http://localhost:8080/cache/myapp")
+        isEnabled = true
+        isPush = providers.environmentVariable("CI").isPresent
+    }
+}
+
+// gradle.properties
+org.gradle.caching=true</pre>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top: 56px;">
+      <div class="card reveal reveal-delay-1">
+        <h3>
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </span>
+          Non-root container
+        </h3>
+        <p>The Docker image runs as an unprivileged user with no shell access. Minimal attack surface.</p>
+      </div>
+      <div class="card reveal reveal-delay-2">
+        <h3>
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </span>
+          Zero-downtime updates
+        </h3>
+        <p>Helm upgrades and raw-manifest rolling updates both ensure maxUnavailable stays zero. New pods pass readiness before old ones terminate.</p>
+      </div>
+      <div class="card reveal reveal-delay-3">
+        <h3>
+          <span class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </span>
+          Resource-conscious
+        </h3>
+        <p>Default requests are 128 MiB memory and 100m CPU, fully tunable through Helm values. The Go runtime stays lean under load.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="glow-line"></div>
+
+<section>
+  <div class="section-inner" style="text-align: center; max-width: 640px;">
+    <div class="cta-logo reveal">
+      <img src="logo.png" alt="go-gradle-cache">
+    </div>
+    <div class="section-label reveal reveal-delay-1" style="text-align: center; justify-content: center;">Get Started</div>
+    <h2 class="reveal reveal-delay-2" style="margin-bottom: 18px;">Start caching smarter.</h2>
+    <p class="reveal reveal-delay-3" style="color: var(--text-secondary); margin-bottom: 40px;">Open source under the MIT License. Contributions welcome.</p>
+    <div class="hero-actions reveal reveal-delay-4" style="justify-content: center;">
+      <a href="https://github.com/yourusername/gradle-cache-server" class="btn btn-primary" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+      <a href="#api" class="btn btn-secondary">Explore the API</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Released under the <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener">MIT License</a></p>
+  <p style="margin-top: 8px;">Built with Go &middot; Designed for Gradle</p>
+</footer>
+
+<script>
+  // Navbar scroll effect
+  const navbar = document.getElementById('navbar');
+  window.addEventListener('scroll', () => {
+    navbar.classList.toggle('scrolled', window.scrollY > 40);
+  });
+
+  // Scroll-triggered reveals
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Tabs with animation reset
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const group = tab.closest('.section-inner');
+      group.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      group.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.remove('active');
+        p.style.opacity = '0';
+        p.style.transform = 'translateY(8px)';
+      });
+      tab.classList.add('active');
+      const panel = document.getElementById('panel-' + tab.dataset.tab);
+      panel.classList.add('active');
+      requestAnimationFrame(() => {
+        panel.style.opacity = '1';
+        panel.style.transform = 'translateY(0)';
+      });
+    });
+  });
+
+  // Copy buttons
+  document.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const code = btn.nextElementSibling.innerText;
+      await navigator.clipboard.writeText(code);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+</script>
+</body>
+</html>
