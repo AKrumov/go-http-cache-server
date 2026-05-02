@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/go-gradle-cache)](https://goreportcard.com/report/github.com/yourusername/go-gradle-cache)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports both local filesystem and S3-compatible storage backends (AWS S3, MinIO, etc.). Includes Prometheus metrics, structured logging, and Kubernetes-ready deployment manifests.
+A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports both local filesystem and S3-compatible storage backends (AWS S3, MinIO, etc.). Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
 
 ## Features
 
@@ -13,7 +13,7 @@ A lightweight, high-performance remote build cache server for [Gradle](https://g
 - **Prometheus Metrics** — request counts, durations, cache hit/miss ratios, bytes stored/served
 - **Graceful Shutdown** — handles SIGINT/SIGTERM properly
 - **Small Docker Image** — multi-stage Alpine build (~15 MB)
-- **Kubernetes Ready** — includes EKS deployment manifests with IRSA support
+- **Kubernetes Ready** — includes a Helm chart with EKS IRSA support
 - **Secure by Default** — non-root container user, configurable request limits
 
 ## Quick Start
@@ -123,17 +123,37 @@ docker run -p 8080:8080 \
 
 ## Kubernetes / EKS
 
-Apply the included manifests:
+Install the included Helm chart:
 
 ```bash
-kubectl apply -f k8s/eks-deployment.yaml
+helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
+  --namespace gradle-cache \
+  --create-namespace \
+  --set image.repository=yourusername/go-gradle-cache \
+  --set config.s3Bucket=my-gradle-cache \
+  --set config.s3Region=us-east-1
+```
+
+After chart releases are published, install from the GitHub Pages Helm repository:
+
+```bash
+helm repo add go-gradle-cache https://yourusername.github.io/go-gradle-cache
+helm repo update
+helm upgrade --install go-gradle-cache go-gradle-cache/go-gradle-cache \
+  --namespace gradle-cache \
+  --create-namespace
 ```
 
 For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html):
 
-1. Uncomment the `eks.amazonaws.com/role-arn` annotation in `k8s/eks-deployment.yaml`
-2. Remove the `Secret` and `secretRef` from the Deployment
-3. Apply the manifest
+```bash
+helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
+  --namespace gradle-cache \
+  --create-namespace \
+  --set image.repository=yourusername/go-gradle-cache \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<ACCOUNT_ID>:role/GradleCacheS3Role \
+  --set secret.create=false
+```
 
 ## Gradle Client Setup
 

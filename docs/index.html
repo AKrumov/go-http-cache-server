@@ -1264,7 +1264,7 @@
       <button class="tab active" data-tab="run">Binary</button>
       <button class="tab" data-tab="docker">Docker</button>
       <button class="tab" data-tab="helm">Helm</button>
-      <button class="tab" data-tab="k8s">Raw K8s</button>
+
       <button class="tab" data-tab="gradle">Gradle Client</button>
     </div>
 
@@ -1355,23 +1355,6 @@ secret:
   data:
     AWS_ACCESS_KEY_ID: ""
     AWS_SECRET_ACCESS_KEY: ""</pre>
-      </div>
-    </div>
-
-    <div class="tab-panel" id="panel-k8s">
-      <div class="code-block">
-        <button class="copy-btn" data-copy>Copy</button>
-        <pre># Prefer Helm? The chart is the recommended path.
-# Raw manifests are available for custom tooling:
-kubectl apply -f k8s/eks-deployment.yaml
-
-# What's inside:
-# - Namespace, ServiceAccount, ConfigMap, Secret
-# - Deployment (2 replicas, RollingUpdate, 0 maxUnavailable)
-# - ClusterIP Service
-# - HorizontalPodAutoscaler (2-10 replicas, 70% CPU target)
-# - Liveness and readiness probes on /health
-# - IRSA annotation support for AWS credential-free S3 access</pre>
       </div>
     </div>
 
