@@ -17,14 +17,18 @@ FROM alpine:3.20
 
 # Install CA certificates for S3 TLS and create non-root user
 RUN apk add --no-cache ca-certificates && \
-    adduser -D -H -s /bin/false cacheuser
+    addgroup -g 1000 cacheuser && \
+    adduser -D -H -s /bin/false -u 1000 -G cacheuser cacheuser
 
 WORKDIR /app
+
+RUN mkdir -p /app/cache-data && \
+    chown -R 1000:1000 /app
 
 # Copy binary from builder
 COPY --from=builder /go-gradle-cache /app/go-gradle-cache
 
-USER cacheuser
+USER 1000:1000
 
 EXPOSE 8080
 

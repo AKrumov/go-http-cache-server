@@ -40,20 +40,3 @@ jobs:
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           helm push go-gradle-cache-*.tgz "oci://ghcr.io/$OWNER"
-
-      - name: Trigger Artifact Hub reindex
-        env:
-          ARTIFACTHUB_API_KEY: ${{ secrets.ARTIFACTHUB_API_KEY }}
-        run: |
-          if [ -z "$ARTIFACTHUB_API_KEY" ]; then
-            echo "ARTIFACTHUB_API_KEY not set — Artifact Hub auto-indexes OCI registries periodically"
-            exit 0
-          fi
-
-          echo "Requesting Artifact Hub reindex..."
-          curl -s --fail \
-            -H "X-API-KEY: $ARTIFACTHUB_API_KEY" \
-            -H "Content-Type: application/json" \
-            -X PUT "https://artifacthub.io/api/v1/repositories/user/go-gradle-cache" \
-            && echo "Reindex triggered successfully" \
-            || echo "Reindex request failed (Artifact Hub may still auto-index within 30 minutes)"
