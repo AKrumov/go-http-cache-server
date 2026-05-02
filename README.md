@@ -1,7 +1,7 @@
 # Gradle Remote Build Cache Server
 
-[![CI](https://github.com/yourusername/go-gradle-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/go-gradle-cache/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/go-gradle-cache)](https://goreportcard.com/report/github.com/yourusername/go-gradle-cache)
+[![CI](https://github.com/AKrumov/go-gradle-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/AKrumov/go-gradle-cache/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/AKrumov/go-gradle-cache)](https://goreportcard.com/report/github.com/AKrumov/go-gradle-cache)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports both local filesystem and S3-compatible storage backends (AWS S3, MinIO, etc.). Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
@@ -129,20 +129,27 @@ Install the included Helm chart:
 helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=yourusername/go-gradle-cache \
+  --set image.repository=akrumovbg/go-gradle-cache \
   --set config.s3Bucket=my-gradle-cache \
   --set config.s3Region=us-east-1
 ```
 
-After chart releases are published, install from the GitHub Pages Helm repository:
+After chart releases are published, install directly from the OCI registry:
 
 ```bash
-helm repo add go-gradle-cache https://yourusername.github.io/go-gradle-cache
-helm repo update
-helm upgrade --install go-gradle-cache go-gradle-cache/go-gradle-cache \
+helm upgrade --install go-gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
   --namespace gradle-cache \
-  --create-namespace
+  --create-namespace \
+  --version 0.1.0
 ```
+
+The chart is also discoverable on [Artifact Hub](https://artifacthub.io). To add it there, register the OCI repository:
+
+- Kind: `Helm charts`
+- Name: `go-gradle-cache`
+- URL: `oci://ghcr.io/akrumov`
+
+For verified publisher status, claim the repository on Artifact Hub and add your repository ID as the `ARTIFACTHUB_REPOSITORY_ID` GitHub Actions secret.
 
 For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html):
 
@@ -150,7 +157,7 @@ For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](htt
 helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=yourusername/go-gradle-cache \
+  --set image.repository=akrumovbg/go-gradle-cache \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<ACCOUNT_ID>:role/GradleCacheS3Role \
   --set secret.create=false
 ```

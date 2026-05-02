@@ -10,23 +10,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  packages: write
 
 jobs:
   release:
-    name: Package and publish Helm chart
+    name: Package and publish Helm chart to GHCR
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -34,10 +28,30 @@ jobs:
       - name: Lint chart
         run: helm lint charts/go-gradle-cache
 
-      - name: Package and publish chart
-        uses: helm/chart-releaser-action@v1
-        with:
-          charts_dir: charts
-          skip_existing: true
+      - name: Package chart
+        run: helm package charts/go-gradle-cache --destination .
+
+      - name: Log in to GitHub Container Registry
         env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Push chart to GHCR (OCI)
+        run: helm push go-gradle-cache-*.tgz oci://ghcr.io/${{ github.repository_owner }}
+
+      - name: Trigger Artifact Hub reindex
+        env:
+          ARTIFACTHUB_API_KEY: ${{ secrets.ARTIFACTHUB_API_KEY }}
+        run: |
+          if [ -z "$ARTIFACTHUB_API_KEY" ]; then
+            echo "ARTIFACTHUB_API_KEY not set — Artifact Hub auto-indexes OCI registries periodically"
+            exit 0
+          fi
+
+          echo "Requesting Artifact Hub reindex..."
+          curl -s --fail \
+            -H "X-API-KEY: $ARTIFACTHUB_API_KEY" \
+            -H "Content-Type: application/json" \
+            -X PUT "https://artifacthub.io/api/v1/repositories/user/go-gradle-cache" \
+            && echo "Reindex triggered successfully" \
+            || echo "Reindex request failed (Artifact Hub may still auto-index within 30 minutes)"

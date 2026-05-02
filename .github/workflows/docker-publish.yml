@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/go-gradle-cache
+  IMAGE_NAME: akrumovbg/go-gradle-cache
 
 jobs:
   docker:

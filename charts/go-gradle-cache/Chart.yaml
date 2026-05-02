@@ -4,3 +4,30 @@ description: A Helm chart for the Go Gradle remote build cache server
 type: application
 version: 0.1.0
 appVersion: "latest"
+home: https://github.com/AKrumov/go-gradle-cache
+icon: https://raw.githubusercontent.com/AKrumov/go-gradle-cache/main/docs/logo.png
+keywords:
+  - gradle
+  - build-cache
+  - remote-cache
+  - s3
+  - prometheus
+  - kubernetes
+sources:
+  - https://github.com/AKrumov/go-gradle-cache
+maintainers:
+  - name: AKrumov
+    url: https://github.com/AKrumov
+annotations:
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/license: MIT
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/AKrumov/go-gradle-cache
+    - name: support
+      url: https://github.com/AKrumov/go-gradle-cache/issues
+  artifacthub.io/images: |
+    - name: go-gradle-cache
+      image: akrumovbg/go-gradle-cache:latest
+      platforms:
+        - linux/amd64
