@@ -1,6 +1,6 @@
 package main
 
-import "go_gradle_cache/app/storage"
+import "go_gradle_cache/storage"
 
 type CacheServer struct {
 	backend   storage.Backend

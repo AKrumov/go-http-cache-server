@@ -1,15 +1,16 @@
 # Build stage
 FROM golang:1-alpine AS builder
 
-WORKDIR /app
+WORKDIR /src
 
 # Download dependencies first (better layer caching)
-COPY app/go.mod app/go.sum ./
+COPY app/go.mod app/go.sum ./app/
+WORKDIR /src/app
 RUN go mod download
 
 # Copy source and build static binary
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o go-gradle-cache ./app
+COPY app/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /go-gradle-cache .
 
 # Final stage
 FROM alpine:3.20
@@ -21,7 +22,7 @@ RUN apk add --no-cache ca-certificates && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/go-gradle-cache /app/go-gradle-cache
+COPY --from=builder /go-gradle-cache /app/go-gradle-cache
 
 USER cacheuser
 

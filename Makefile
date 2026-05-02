@@ -5,16 +5,16 @@ VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS=-ldflags "-w -s -X main.version=$(VERSION)"
 
 build:
-	go build $(LDFLAGS) -o $(BINARY_NAME) ./app
+	cd app && go build $(LDFLAGS) -o ../$(BINARY_NAME) .
 
 test:
-	go test -race -cover ./...
+	cd app && go test -race -cover ./...
 
 run:
-	go run $(LDFLAGS) ./app -storage=local -dir=./cache-data
+	cd app && go run $(LDFLAGS) . -storage=local -dir=../cache-data
 
 lint:
-	golangci-lint run ./...
+	cd app && golangci-lint run ./...
 
 clean:
 	rm -f $(BINARY_NAME)

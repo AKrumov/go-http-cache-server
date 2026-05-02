@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"go_gradle_cache/app/metrics"
-	"go_gradle_cache/app/storage"
+	"go_gradle_cache/metrics"
+	"go_gradle_cache/storage"
 )
 
 func envOrDefault(key, def string) string {
