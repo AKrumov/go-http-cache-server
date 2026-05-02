@@ -1,8 +1,8 @@
 replicaCount: 2
 
 image:
-  repository: akrumovbg/go-gradle-cache
-  pullPolicy: IfNotPresent
+  repository: ghcr.io/akrumov/go-gradle-cache
+  pullPolicy: Always
   tag: "latest"
 
 imagePullSecrets: []

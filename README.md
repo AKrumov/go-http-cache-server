@@ -129,7 +129,7 @@ Install the included Helm chart:
 helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=akrumovbg/go-gradle-cache \
+  --set image.repository=ghcr.io/akrumov/go-gradle-cache \
   --set config.s3Bucket=my-gradle-cache \
   --set config.s3Region=us-east-1
 ```
@@ -157,7 +157,7 @@ For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](htt
 helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=akrumovbg/go-gradle-cache \
+  --set image.repository=ghcr.io/akrumov/go-gradle-cache \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<ACCOUNT_ID>:role/GradleCacheS3Role \
   --set secret.create=false
 ```
