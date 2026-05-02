@@ -23,7 +23,7 @@ func envOrDefault(key, def string) string {
 }
 
 func run(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("gradle-cache-server", flag.ContinueOnError)
+	fs := flag.NewFlagSet("go-gradle-cache", flag.ContinueOnError)
 
 	var (
 		showVersion bool

@@ -20,5 +20,5 @@ cache-data/
 Thumbs.db
 
 # Build artifacts
-gradle-cache-server
+go-gradle-cache
 *.exe

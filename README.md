@@ -1,7 +1,7 @@
 # Gradle Remote Build Cache Server
 
-[![CI](https://github.com/yourusername/gradle-cache-server/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/gradle-cache-server/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/gradle-cache-server)](https://goreportcard.com/report/github.com/yourusername/gradle-cache-server)
+[![CI](https://github.com/yourusername/go-gradle-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/go-gradle-cache/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/go-gradle-cache)](https://goreportcard.com/report/github.com/yourusername/go-gradle-cache)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports both local filesystem and S3-compatible storage backends (AWS S3, MinIO, etc.). Includes Prometheus metrics, structured logging, and Kubernetes-ready deployment manifests.
@@ -63,7 +63,7 @@ Every option can be set via **command-line flag** or **environment variable**. F
 
 **Via flags:**
 ```bash
-./gradle-cache-server \
+./go-gradle-cache \
   -listen=:8080 \
   -storage=s3 \
   -s3-bucket=my-gradle-cache \
@@ -80,7 +80,7 @@ export MAX_UPLOAD_SIZE=10737418240
 export AWS_ACCESS_KEY_ID=AKIA...
 export AWS_SECRET_ACCESS_KEY=...
 
-./gradle-cache-server
+./go-gradle-cache
 ```
 
 **Mixed (flags override env vars):**
@@ -90,7 +90,7 @@ export S3_BUCKET=my-gradle-cache
 export S3_REGION=us-east-1
 
 # Uses the env vars above, but overrides the bucket
-./gradle-cache-server -s3-bucket=another-bucket
+./go-gradle-cache -s3-bucket=another-bucket
 ```
 
 ### AWS Credentials
@@ -103,12 +103,12 @@ The server uses the standard AWS SDK credential chain:
 ## Docker
 
 ```bash
-docker build -t gradle-cache-server .
+docker build -t go-gradle-cache .
 
 # Local storage
 docker run -p 8080:8080 \
   -v $(pwd)/cache-data:/app/cache-data \
-  gradle-cache-server \
+  go-gradle-cache \
   -storage=local -dir=/app/cache-data
 
 # S3 storage
@@ -118,7 +118,7 @@ docker run -p 8080:8080 \
   -e STORAGE_TYPE=s3 \
   -e S3_BUCKET=my-gradle-cache \
   -e S3_REGION=us-east-1 \
-  gradle-cache-server
+  go-gradle-cache
 ```
 
 ## Kubernetes / EKS

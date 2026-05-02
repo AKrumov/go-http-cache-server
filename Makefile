@@ -1,6 +1,6 @@
 .PHONY: build test run clean docker lint
 
-BINARY_NAME=gradle-cache-server
+BINARY_NAME=go-gradle-cache
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS=-ldflags "-w -s -X main.version=$(VERSION)"
 

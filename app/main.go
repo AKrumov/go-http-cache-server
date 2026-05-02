@@ -1,4 +1,4 @@
-// gradle-cache-server is a remote build cache server for Gradle.
+// go-gradle-cache is a remote build cache server for Gradle.
 // It supports both local filesystem and S3-compatible backends.
 package main
 
