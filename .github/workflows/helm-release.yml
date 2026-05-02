@@ -37,7 +37,9 @@ jobs:
         run: echo "$GITHUB_TOKEN" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
 
       - name: Push chart to GHCR (OCI)
-        run: helm push go-gradle-cache-*.tgz oci://ghcr.io/${{ github.repository_owner }}
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push go-gradle-cache-*.tgz "oci://ghcr.io/$OWNER"
 
       - name: Trigger Artifact Hub reindex
         env:
