@@ -368,6 +368,66 @@ func TestCacheServerInvalidMethod(t *testing.T) {
 	}
 }
 
+func TestCacheServerBasicAuth(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		be := &mockBackend{
+			headFunc: func(ctx context.Context, key string) (int64, bool, error) {
+				return 1, true, nil
+			},
+		}
+		cs := NewCacheServer(be, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodHead, "/cache/myid/foo", nil)
+
+		cs.requireAuth(cs.handleCache)(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("requires credentials", func(t *testing.T) {
+		auth, err := newAuthConfig("gradle", "secret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cs := NewCacheServerWithAuth(&mockBackend{}, 0, auth)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodHead, "/cache/myid/foo", nil)
+
+		cs.requireAuth(cs.handleCache)(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusUnauthorized)
+		}
+		if rr.Header().Get("WWW-Authenticate") == "" {
+			t.Fatal("expected WWW-Authenticate header")
+		}
+	})
+
+	t.Run("accepts valid credentials", func(t *testing.T) {
+		auth, err := newAuthConfig("gradle", "secret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		be := &mockBackend{
+			headFunc: func(ctx context.Context, key string) (int64, bool, error) {
+				return 1, true, nil
+			},
+		}
+		cs := NewCacheServerWithAuth(be, 0, auth)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodHead, "/cache/myid/foo", nil)
+		req.SetBasicAuth("gradle", "secret")
+
+		cs.requireAuth(cs.handleCache)(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+}
+
 func TestHandleHealth(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		cs := NewCacheServer(&mockBackend{}, 0)
@@ -526,5 +586,12 @@ func TestRunS3MissingBucket(t *testing.T) {
 	err := run(context.Background(), []string{"-storage", "s3"})
 	if err == nil {
 		t.Fatal("expected error for missing S3 bucket")
+	}
+}
+
+func TestRunIncompleteAuthConfig(t *testing.T) {
+	err := run(context.Background(), []string{"-auth-username", "gradle"})
+	if err == nil {
+		t.Fatal("expected error for incomplete auth config")
 	}
 }

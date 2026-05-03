@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +15,8 @@ import (
 	"go_gradle_cache/metrics"
 	"go_gradle_cache/storage"
 )
+
+var errIncompleteAuthConfig = errors.New("both auth username and auth password are required when HTTP authentication is enabled")
 
 func envOrDefault(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -35,6 +38,8 @@ func run(ctx context.Context, args []string) error {
 		s3Region    string
 		s3Endpoint  string
 		maxUpload   int64
+		authUser    string
+		authPass    string
 	)
 
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
@@ -46,6 +51,8 @@ func run(ctx context.Context, args []string) error {
 	fs.StringVar(&s3Region, "s3-region", envOrDefault("S3_REGION", ""), "S3 region")
 	fs.StringVar(&s3Endpoint, "s3-endpoint", envOrDefault("S3_ENDPOINT", ""), "S3 endpoint URL (for MinIO, etc.)")
 	fs.Int64Var(&maxUpload, "max-upload", 0, "max upload size per cache entry in bytes (0 = unlimited)")
+	fs.StringVar(&authUser, "auth-username", envOrDefault("AUTH_USERNAME", ""), "HTTP Basic authentication username (disabled when empty)")
+	fs.StringVar(&authPass, "auth-password", envOrDefault("AUTH_PASSWORD", ""), "HTTP Basic authentication password (disabled when empty)")
 	if v := os.Getenv("MAX_UPLOAD_SIZE"); v != "" && maxUpload == 0 {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			maxUpload = n
@@ -59,9 +66,12 @@ func run(ctx context.Context, args []string) error {
 		fmt.Println(version)
 		return nil
 	}
+	auth, err := newAuthConfig(authUser, authPass)
+	if err != nil {
+		return err
+	}
 
 	var backend storage.Backend
-	var err error
 
 	switch strings.ToLower(storageType) {
 	case "local":
@@ -83,11 +93,11 @@ func run(ctx context.Context, args []string) error {
 		return fmt.Errorf("unknown storage type: %s", storageType)
 	}
 
-	server := NewCacheServer(backend, maxUpload)
+	server := NewCacheServerWithAuth(backend, maxUpload, auth)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/cache/", server.instrument("cache", server.handleCache))
+	mux.HandleFunc("/cache/", server.instrument("cache", server.requireAuth(server.handleCache)))
 	mux.HandleFunc("/health", server.instrument("health", server.handleHealth))
-	mux.Handle("/metrics", metrics.Handler())
+	mux.Handle("/metrics", server.requireAuth(metrics.Handler().ServeHTTP))
 
 	srv := &http.Server{
 		Addr:         listenAddr,

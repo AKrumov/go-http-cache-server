@@ -57,6 +57,8 @@ Every option can be set via **command-line flag** or **environment variable**. F
 | `-s3-region` | `S3_REGION` | — | AWS region |
 | `-s3-endpoint` | `S3_ENDPOINT` | — | Custom endpoint (MinIO, etc.) |
 | `-max-upload` | `MAX_UPLOAD_SIZE` | `0` | Max upload size in bytes (`0` = unlimited) |
+| `-auth-username` | `AUTH_USERNAME` | — | HTTP Basic authentication username |
+| `-auth-password` | `AUTH_PASSWORD` | — | HTTP Basic authentication password |
 | `-version` | — | — | Print version and exit |
 
 ### Configuration Examples
@@ -83,6 +85,15 @@ export AWS_SECRET_ACCESS_KEY=...
 ./go-gradle-cache
 ```
 
+**With HTTP Basic authentication:**
+```bash
+./go-gradle-cache \
+  -storage=local \
+  -dir=./cache-data \
+  -auth-username=gradle \
+  -auth-password=change-me
+```
+
 **Mixed (flags override env vars):**
 ```bash
 export STORAGE_TYPE=s3
@@ -99,6 +110,10 @@ The server uses the standard AWS SDK credential chain:
 1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
 2. Shared credentials file (`~/.aws/credentials`)
 3. IAM role (EC2, ECS, EKS/IRSA)
+
+### HTTP Authentication
+
+HTTP Basic authentication is disabled by default. Set both `AUTH_USERNAME` and `AUTH_PASSWORD` (or both matching flags) to require credentials for `/cache/*` and `/metrics`. The `/health` endpoint remains unauthenticated for load balancer and Kubernetes probes.
 
 ## Docker
 
@@ -176,6 +191,10 @@ buildCache {
         isEnabled = true
         isPush = providers.environmentVariable("CI").isPresent
         isAllowInsecureProtocol = true // only for local testing without HTTPS
+        credentials {
+            username = providers.environmentVariable("GRADLE_CACHE_USERNAME").orElse("").get()
+            password = providers.environmentVariable("GRADLE_CACHE_PASSWORD").orElse("").get()
+        }
     }
 }
 ```
