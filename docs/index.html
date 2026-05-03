@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>go-gradle-cache — Remote build cache server for Gradle</title>
-  <meta name="description" content="A production-ready remote build cache server for Gradle. Written in Go. Supports local filesystem and S3-compatible storage. Prometheus metrics included.">
+  <meta name="description" content="A production-ready remote build cache server for Gradle. Written in Go. Supports local filesystem, S3-compatible storage, HTTP Basic authentication, and Prometheus metrics.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -977,7 +977,7 @@
       <div class="eyebrow">Production-ready remote cache</div>
       <h1>Cut build times with a dedicated cache server.</h1>
       <p>
-        A focused, high-performance remote build cache for Gradle. Implements the standard HTTP build cache protocol with pluggable storage, built-in observability, and zero external dependencies beyond your chosen backend.
+        A focused, high-performance remote build cache for Gradle. Implements the standard HTTP build cache protocol with pluggable storage, optional Basic authentication, built-in observability, and zero external dependencies beyond your chosen backend.
       </p>
       <div class="hero-actions">
         <a href="#deploy" class="btn btn-primary">Deploy in minutes</a>
@@ -1283,7 +1283,12 @@ export S3_REGION=us-east-1
 ./go-gradle-cache
 
 # With upload limit (10 MiB)
-./go-gradle-cache -storage=local -dir=./cache -max-upload=10485760</pre>
+./go-gradle-cache -storage=local -dir=./cache -max-upload=10485760
+
+# With HTTP Basic authentication
+./go-gradle-cache -storage=local -dir=./cache \
+  -auth-username=gradle \
+  -auth-password=change-me</pre>
       </div>
     </div>
 
@@ -1298,6 +1303,8 @@ docker run -p 8080:8080 \
   -e STORAGE_TYPE=s3 \
   -e S3_BUCKET=my-cache \
   -e S3_REGION=us-east-1 \
+  -e AUTH_USERNAME=gradle \
+  -e AUTH_PASSWORD=change-me \
   -e AWS_ACCESS_KEY_ID=... \
   -e AWS_SECRET_ACCESS_KEY=... \
   go-gradle-cache</pre>
@@ -1353,7 +1360,9 @@ resources:
 secret:
   data:
     AWS_ACCESS_KEY_ID: ""
-    AWS_SECRET_ACCESS_KEY: ""</pre>
+    AWS_SECRET_ACCESS_KEY: ""
+    AUTH_USERNAME: "gradle"
+    AUTH_PASSWORD: "change-me"</pre>
       </div>
     </div>
 
@@ -1367,6 +1376,10 @@ buildCache {
         url = uri("http://localhost:8080/cache/myapp")
         isEnabled = true
         isPush = providers.environmentVariable("CI").isPresent
+        credentials {
+            username = providers.environmentVariable("GRADLE_CACHE_USERNAME").orElse("").get()
+            password = providers.environmentVariable("GRADLE_CACHE_PASSWORD").orElse("").get()
+        }
     }
 }
 
@@ -1381,9 +1394,9 @@ org.gradle.caching=true</pre>
           <span class="card-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </span>
-          Non-root container
+          Basic authentication
         </h3>
-        <p>The Docker image runs as an unprivileged user with no shell access. Minimal attack surface.</p>
+        <p>Set a username and password to protect cache reads, writes, and metrics with HTTP Basic authentication. Health probes stay open.</p>
       </div>
       <div class="card reveal reveal-delay-2">
         <h3>
