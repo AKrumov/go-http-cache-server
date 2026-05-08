@@ -21,4 +21,6 @@ clean:
 	rm -rf cache-data
 
 docker:
-	docker build -t $(BINARY_NAME):$(VERSION) .
+	docker build -t $(BINARY_NAME):$(VERSION) -t $(BINARY_NAME):latest .
+	docker push $(BINARY_NAME):$(VERSION)
+	docker push $(BINARY_NAME):latest
