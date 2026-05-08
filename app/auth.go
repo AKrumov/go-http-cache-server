@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"crypto/subtle"
 	"net/http"
 )
@@ -46,12 +45,19 @@ func (cs *CacheServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (auth authConfig) matches(username, password string) bool {
-	usernameHash := sha256.Sum256([]byte(username))
-	expectedUsernameHash := sha256.Sum256([]byte(auth.username))
-	passwordHash := sha256.Sum256([]byte(password))
-	expectedPasswordHash := sha256.Sum256([]byte(auth.password))
+	usernameBytes := []byte(username)
+	expectedUsernameBytes := []byte(auth.username)
+	passwordBytes := []byte(password)
+	expectedPasswordBytes := []byte(auth.password)
 
-	usernameMatches := subtle.ConstantTimeCompare(usernameHash[:], expectedUsernameHash[:]) == 1
-	passwordMatches := subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:]) == 1
+	if len(usernameBytes) != len(expectedUsernameBytes) {
+		return false
+	}
+	if len(passwordBytes) != len(expectedPasswordBytes) {
+		return false
+	}
+
+	usernameMatches := subtle.ConstantTimeCompare(usernameBytes, expectedUsernameBytes) == 1
+	passwordMatches := subtle.ConstantTimeCompare(passwordBytes, expectedPasswordBytes) == 1
 	return usernameMatches && passwordMatches
 }
