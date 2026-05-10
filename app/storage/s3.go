@@ -9,15 +9,17 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // S3 implements Backend using Amazon S3 (or compatible services like MinIO).
 type S3 struct {
-	client *s3.Client
-	bucket string
-	prefix string
+	client   *s3.Client
+	uploader *manager.Uploader
+	bucket   string
+	prefix   string
 }
 
 // S3Options holds configuration for the S3 backend.
@@ -27,6 +29,7 @@ type S3Options struct {
 	Region      string
 	Endpoint    string                  // optional, for MinIO and other S3-compatible services
 	Credentials aws.CredentialsProvider // optional
+	Concurrency int                     // number of concurrent part uploads; zero means default
 }
 
 // NewS3 creates a new S3 backend.
@@ -56,10 +59,20 @@ func NewS3(ctx context.Context, opts S3Options) (*S3, error) {
 	}
 
 	client := s3.NewFromConfig(cfg, s3Opts...)
+
+	concurrency := opts.Concurrency
+	if concurrency <= 0 {
+		concurrency = manager.DefaultUploadConcurrency
+	}
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
+		u.Concurrency = concurrency
+	})
+
 	return &S3{
-		client: client,
-		bucket: opts.Bucket,
-		prefix: opts.Prefix,
+		client:   client,
+		uploader: uploader,
+		bucket:   opts.Bucket,
+		prefix:   opts.Prefix,
 	}, nil
 }
 
@@ -133,7 +146,7 @@ func (s *S3) Put(ctx context.Context, key string, r io.Reader, size int64) error
 		input.ContentLength = aws.Int64(size)
 	}
 
-	_, err := s.client.PutObject(ctx, input)
+	_, err := s.uploader.Upload(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to upload object to S3: %w", err)
 	}
