@@ -1419,47 +1419,34 @@
     <div class="section-header reveal">
       <div class="section-label">Observability</div>
       <h2>Metrics that matter.</h2>
-      <p>Every request is instrumented with latency histograms, per-cache-ID counters, and in-flight gauges. No sidecar required.</p>
+      <p>Every request is instrumented with latency histograms, per-cache-ID counters, and in-flight gauges. Scrape them with Prometheus or point Grafana directly at the metrics endpoint.</p>
     </div>
 
     <div class="grid-2">
-      <div class="card reveal reveal-delay-1" style="padding: 0; overflow: hidden;">
-        <div style="padding: 28px 32px; border-bottom: 1px solid var(--border);">
-          <h3 style="margin-bottom: 0;">Prometheus Metrics</h3>
+      <div class="terminal reveal reveal-delay-1" style="font-size: 0.78rem;">
+        <div class="terminal-header">
+          <span class="t-dot t-dot-r"></span>
+          <span class="t-dot t-dot-y"></span>
+          <span class="t-dot t-dot-g"></span>
+          <span class="t-title">prometheus metrics — /metrics</span>
         </div>
-        <div style="padding: 10px 32px;">
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_requests_total</span>
-            <span class="metric-desc">Counter by method, handler, status, cache_id</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_request_duration_seconds</span>
-            <span class="metric-desc">Latency histogram with default buckets</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_hits_total</span>
-            <span class="metric-desc">Per-cache-ID hit counter</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_misses_total</span>
-            <span class="metric-desc">Per-cache-ID miss counter</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_entries_stored_total</span>
-            <span class="metric-desc">Successful PUTs per cache ID</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_stored_bytes_total</span>
-            <span class="metric-desc">Bytes accepted per cache ID</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_served_bytes_total</span>
-            <span class="metric-desc">Bytes served per cache ID</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-name">gradle_cache_in_flight_requests</span>
-            <span class="metric-desc">Current active HTTP requests</span>
-          </div>
+        <div class="terminal-body">
+          <span class="c"># HELP gradle_cache_requests_total Total HTTP requests</span><br>
+          <span class="c"># TYPE gradle_cache_requests_total counter</span><br>
+          <span>gradle_cache_requests_total{method="GET",handler="cache",status="200",cache_id="myapp"} <span class="v">1842</span></span><br>
+          <span>gradle_cache_requests_total{method="PUT",handler="cache",status="201",cache_id="myapp"} <span class="v">523</span></span><br><br>
+          <span class="c"># HELP gradle_cache_request_duration_seconds Request latency</span><br>
+          <span class="c"># TYPE gradle_cache_request_duration_seconds histogram</span><br>
+          <span>gradle_cache_request_duration_seconds_bucket{method="GET",le="0.1"} <span class="v">1520</span></span><br>
+          <span>gradle_cache_request_duration_seconds_bucket{method="GET",le="0.5"} <span class="v">1801</span></span><br>
+          <span>gradle_cache_request_duration_seconds_bucket{method="GET",le="+Inf"} <span class="v">1842</span></span><br>
+          <span>gradle_cache_request_duration_seconds_sum <span class="v">94.23</span></span><br>
+          <span>gradle_cache_request_duration_seconds_count <span class="v">1842</span></span><br><br>
+          <span class="c"># HELP gradle_cache_hits_total Cache hits</span><br>
+          <span>gradle_cache_hits_total{cache_id="myapp"} <span class="v">1287</span></span><br>
+          <span>gradle_cache_misses_total{cache_id="myapp"} <span class="v">555</span></span><br><br>
+          <span class="c"># HELP gradle_cache_in_flight_requests Active requests</span><br>
+          <span>gradle_cache_in_flight_requests <span class="v">12</span></span>
         </div>
       </div>
 
@@ -1467,20 +1454,29 @@
         <div class="card reveal reveal-delay-2" style="margin-bottom: 24px;">
           <h3>
             <span class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+            </span>
+            Prometheus Native
+          </h3>
+          <p>All metrics follow the OpenMetrics exposition format. No adapters, no exporters, no sidecars. Just point your Prometheus scrape config at <code style="color: var(--accent);">:8080/metrics</code> and start querying.</p>
+        </div>
+        <div class="card reveal reveal-delay-3" style="margin-bottom: 24px;">
+          <h3>
+            <span class="card-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </span>
-            Request Instrumentation
+            RED Instrumentation
           </h3>
-          <p>A custom response writer captures the exact HTTP status code for every handler. Request duration, method, and cache ID are recorded before the connection closes. In-flight requests are tracked with a gauge that increments on entry and decrements on exit.</p>
+          <p>Request rate, errors, and duration are captured for every handler. A custom response writer records the exact status code before the connection closes, so your error budgets are always accurate.</p>
         </div>
-        <div class="card reveal reveal-delay-3">
+        <div class="card reveal reveal-delay-4">
           <h3>
             <span class="card-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </span>
             Graceful Shutdown
           </h3>
-          <p>On SIGINT or SIGTERM, the server stops accepting new connections and waits up to 10 seconds for in-flight requests to finish. No partial cache entries, no dropped uploads.</p>
+          <p>On SIGINT or SIGTERM, the server stops accepting new connections and waits up to 10 seconds for in-flight requests to finish. No partial cache entries, no dropped uploads, no metric gaps.</p>
         </div>
       </div>
     </div>
@@ -1616,7 +1612,7 @@ secret:
     AUTH_PASSWORD: "change-me"</pre>
       </div>
       <p style="color: var(--text-tertiary); font-size: 0.82rem; margin-top: 14px; text-align: center;">
-        Also discoverable on <a href="https://artifacthub.io" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Artifact Hub</a>
+        <a href="https://artifacthub.io" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Artifact Hub</a>
       </p>
     </div>
 
