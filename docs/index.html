@@ -771,6 +771,96 @@
       transform: translateY(0);
     }
 
+    /* ========== SYNTAX HIGHLIGHTING ========== */
+    code[class*="language-"],
+    pre[class*="language-"] {
+      color: var(--text-secondary);
+      background: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.75;
+      text-shadow: none;
+      word-break: normal;
+      word-wrap: normal;
+      tab-size: 2;
+      hyphens: none;
+    }
+
+    .token.comment,
+    .token.prolog,
+    .token.doctype,
+    .token.cdata {
+      color: var(--text-tertiary);
+    }
+
+    .token.property,
+    .token.tag,
+    .token.boolean,
+    .token.number,
+    .token.constant,
+    .token.symbol,
+    .token.deleted {
+      color: #e06c75;
+    }
+
+    .token.selector,
+    .token.attr-name,
+    .token.string,
+    .token.char,
+    .token.builtin,
+    .token.inserted {
+      color: #98c379;
+    }
+
+    .token.operator,
+    .token.entity,
+    .token.url,
+    .language-css .token.string,
+    .style .token.string {
+      color: #56b6c2;
+    }
+
+    .token.atrule,
+    .token.attr-value,
+    .token.keyword {
+      color: var(--accent);
+    }
+
+    .token.function,
+    .token.class-name {
+      color: #61afef;
+    }
+
+    .token.regex,
+    .token.important,
+    .token.variable {
+      color: #c678dd;
+    }
+
+    .token.punctuation {
+      color: var(--text-secondary);
+    }
+
+    [data-theme="light"] .token.string,
+    [data-theme="light"] .token.inserted {
+      color: #2d8a3e;
+    }
+
+    [data-theme="light"] .token.number,
+    [data-theme="light"] .token.constant {
+      color: #c0392b;
+    }
+
+    [data-theme="light"] .token.function,
+    [data-theme="light"] .token.class-name {
+      color: #2980b9;
+    }
+
+    [data-theme="light"] .token.regex,
+    [data-theme="light"] .token.variable {
+      color: #8e44ad;
+    }
+
     /* ========== TABS ========== */
     .tabs {
       display: flex;
@@ -1581,7 +1671,7 @@
       <div class="code-block">
         <div class="code-header"><span class="code-lang">bash</span><span>terminal</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre>make build
+        <pre><code class="language-bash">make build
 
 # Local filesystem
 ./go-gradle-cache -storage=local -dir=./cache-data
@@ -1599,7 +1689,7 @@ export S3_CONCURRENCY=15
 # With HTTP Basic authentication
 ./go-gradle-cache -storage=local -dir=./cache \
   -auth-username=gradle \
-  -auth-password=change-me</pre>
+  -auth-password=change-me</code></pre>
       </div>
     </div>
 
@@ -1607,7 +1697,7 @@ export S3_CONCURRENCY=15
       <div class="code-block">
         <div class="code-header"><span class="code-lang">bash</span><span>Dockerfile</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre># Multi-stage Alpine build (~15 MB final image)
+        <pre><code class="language-bash"># Multi-stage Alpine build (~15 MB final image)
 docker build -t go-gradle-cache .
 
 # Non-root user, CA certs included for S3 TLS
@@ -1620,7 +1710,7 @@ docker run -p 8080:8080 \
   -e AUTH_PASSWORD=change-me \
   -e AWS_ACCESS_KEY_ID=... \
   -e AWS_SECRET_ACCESS_KEY=... \
-  go-gradle-cache</pre>
+  go-gradle-cache</code></pre>
       </div>
     </div>
 
@@ -1628,7 +1718,7 @@ docker run -p 8080:8080 \
       <div class="code-block" style="margin-bottom: 16px;">
         <div class="code-header"><span class="code-lang">bash</span><span>helm</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre># Install directly from the OCI registry
+        <pre><code class="language-bash"># Install directly from the OCI registry
 helm install gradle-cache oci://ghcr.io/akrumov/go-gradle-cache --version 0.1.0
 
 # Install with a custom values file
@@ -1637,12 +1727,12 @@ helm install gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
 
 # Upgrade after changing values
 helm upgrade gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
-  --version 0.1.0 -f my-values.yaml</pre>
+  --version 0.1.0 -f my-values.yaml</code></pre>
       </div>
       <div class="code-block">
         <div class="code-header"><span class="code-lang">yaml</span><span>my-values.yaml</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre>config:
+        <pre><code class="language-yaml">config:
   storageType: s3
   s3Bucket: my-gradle-cache
   s3Region: us-east-1
@@ -1674,7 +1764,7 @@ secret:
     AWS_ACCESS_KEY_ID: ""
     AWS_SECRET_ACCESS_KEY: ""
     AUTH_USERNAME: "gradle"
-    AUTH_PASSWORD: "change-me"</pre>
+    AUTH_PASSWORD: "change-me"</code></pre>
       </div>
       <p style="color: var(--text-tertiary); font-size: 0.82rem; margin-top: 14px; text-align: center;">
         <a href="https://artifacthub.io" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Artifact Hub</a>
@@ -1685,7 +1775,7 @@ secret:
       <div class="code-block">
         <div class="code-header"><span class="code-lang">kotlin</span><span>settings.gradle.kts</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre>// settings.gradle.kts
+        <pre><code class="language-kotlin">// settings.gradle.kts
 buildCache {
     local { isEnabled = true }
     remote&lt;HttpBuildCache&gt; {
@@ -1700,7 +1790,7 @@ buildCache {
 }
 
 // gradle.properties
-org.gradle.caching=true</pre>
+org.gradle.caching=true</code></pre>
       </div>
     </div>
 
@@ -1787,6 +1877,10 @@ org.gradle.caching=true</pre>
   </div>
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
 <script>
   // Navbar scroll effect
   const navbar = document.getElementById('navbar');
@@ -1823,6 +1917,7 @@ org.gradle.caching=true</pre>
         panel.style.opacity = '1';
         panel.style.transform = 'translateY(0)';
       });
+      if (window.Prism) Prism.highlightAll();
     });
   });
 
