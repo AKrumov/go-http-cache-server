@@ -42,6 +42,7 @@ config:
   s3Prefix: gradle-cache
   s3Region: us-east-1
   s3Endpoint: ""
+  s3Concurrency: 0
   maxUploadSize: ""
 
 secret:

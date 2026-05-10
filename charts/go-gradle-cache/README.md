@@ -23,6 +23,7 @@ Common values:
 | `config.storageType` | Storage backend, `local` or `s3` | `s3` |
 | `config.s3Bucket` | S3 bucket for cache objects | `my-gradle-cache` |
 | `config.s3Region` | S3 region | `us-east-1` |
+| `config.s3Concurrency` | S3 upload concurrency (`0` = SDK default of 5) | `0` |
 | `secret.data.AUTH_USERNAME` | HTTP Basic authentication username | `""` |
 | `secret.data.AUTH_PASSWORD` | HTTP Basic authentication password | `""` |
 | `autoscaling.enabled` | Enable HorizontalPodAutoscaler | `true` |

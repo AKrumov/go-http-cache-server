@@ -11,6 +11,9 @@ data:
   S3_PREFIX: {{ .Values.config.s3Prefix | quote }}
   S3_REGION: {{ .Values.config.s3Region | quote }}
   S3_ENDPOINT: {{ .Values.config.s3Endpoint | quote }}
+  {{- if .Values.config.s3Concurrency }}
+  S3_CONCURRENCY: {{ .Values.config.s3Concurrency | quote }}
+  {{- end }}
   {{- if .Values.config.maxUploadSize }}
   MAX_UPLOAD_SIZE: {{ .Values.config.maxUploadSize | quote }}
   {{- end }}
