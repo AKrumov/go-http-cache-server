@@ -33,11 +33,12 @@ func run(ctx context.Context, args []string) error {
 		listenAddr  string
 		storageType string
 		cacheDir    string
-		s3Bucket    string
-		s3Prefix    string
-		s3Region    string
-		s3Endpoint  string
-		maxUpload   int64
+		s3Bucket      string
+		s3Prefix      string
+		s3Region      string
+		s3Endpoint    string
+		s3Concurrency int
+		maxUpload     int64
 		authUser    string
 		authPass    string
 	)
@@ -50,9 +51,15 @@ func run(ctx context.Context, args []string) error {
 	fs.StringVar(&s3Prefix, "s3-prefix", envOrDefault("S3_PREFIX", ""), "S3 key prefix")
 	fs.StringVar(&s3Region, "s3-region", envOrDefault("S3_REGION", ""), "S3 region")
 	fs.StringVar(&s3Endpoint, "s3-endpoint", envOrDefault("S3_ENDPOINT", ""), "S3 endpoint URL (for MinIO, etc.)")
+	fs.IntVar(&s3Concurrency, "s3-concurrency", 0, "S3 upload concurrency (0 = default)")
 	fs.Int64Var(&maxUpload, "max-upload", 0, "max upload size per cache entry in bytes (0 = unlimited)")
 	fs.StringVar(&authUser, "auth-username", envOrDefault("AUTH_USERNAME", ""), "HTTP Basic authentication username (disabled when empty)")
 	fs.StringVar(&authPass, "auth-password", envOrDefault("AUTH_PASSWORD", ""), "HTTP Basic authentication password (disabled when empty)")
+	if v := os.Getenv("S3_CONCURRENCY"); v != "" && s3Concurrency == 0 {
+		if n, err := strconv.Atoi(v); err == nil {
+			s3Concurrency = n
+		}
+	}
 	if v := os.Getenv("MAX_UPLOAD_SIZE"); v != "" && maxUpload == 0 {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			maxUpload = n
@@ -81,10 +88,11 @@ func run(ctx context.Context, args []string) error {
 		}
 	case "s3":
 		backend, err = storage.NewS3(ctx, storage.S3Options{
-			Bucket:   s3Bucket,
-			Prefix:   s3Prefix,
-			Region:   s3Region,
-			Endpoint: s3Endpoint,
+			Bucket:      s3Bucket,
+			Prefix:      s3Prefix,
+			Region:      s3Region,
+			Endpoint:    s3Endpoint,
+			Concurrency: s3Concurrency,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create S3 storage: %w", err)

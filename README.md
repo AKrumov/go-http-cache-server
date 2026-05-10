@@ -56,6 +56,7 @@ Every option can be set via **command-line flag** or **environment variable**. F
 | `-s3-prefix` | `S3_PREFIX` | — | S3 key prefix |
 | `-s3-region` | `S3_REGION` | — | AWS region |
 | `-s3-endpoint` | `S3_ENDPOINT` | — | Custom endpoint (MinIO, etc.) |
+| `-s3-concurrency` | `S3_CONCURRENCY` | `0` | S3 upload concurrency (`0` = SDK default of 5) |
 | `-max-upload` | `MAX_UPLOAD_SIZE` | `0` | Max upload size in bytes (`0` = unlimited) |
 | `-auth-username` | `AUTH_USERNAME` | — | HTTP Basic authentication username |
 | `-auth-password` | `AUTH_PASSWORD` | — | HTTP Basic authentication password |
@@ -204,6 +205,55 @@ Enable caching in `gradle.properties`:
 ```properties
 org.gradle.caching=true
 ```
+
+### Tuning S3 Upload Concurrency
+
+The S3 backend uses the AWS SDK transfer manager to upload objects. By default the SDK uses a concurrency of **5** parallel part workers. You can override this with the `-s3-concurrency` flag (or `S3_CONCURRENCY` environment variable).
+
+#### How to choose the right value
+
+The main constraints are **memory** and **network bandwidth**.
+
+**Memory bound**
+
+The uploader allocates a buffer per concurrent part (default part size is 5 MB):
+
+```
+memory_per_active_upload = concurrency × 5 MB
+memory_total             = memory_per_active_upload × simultaneous_uploads
+```
+
+For example, with `concurrency = 15` and **10 concurrent uploads** at peak:
+- Upload buffers alone: `15 × 5 MB × 10 = 750 MB`
+- Add Go runtime, HTTP buffers, and GC headroom: **~1.3 GB total**
+
+**Recommended EKS resource limits for concurrency = 15**
+
+When running 2–3 pods for 80+ Android applications:
+
+```yaml
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "1000m"
+  limits:
+    memory: "4Gi"
+    cpu: "2000m"
+```
+
+- **Memory limit of 4 GiB** handles bursts when many Gradle tasks flush cache artifacts simultaneously.
+- **CPU limit of 2 cores** is sufficient because S3 uploads are I/O-bound, but TLS handshakes and many goroutines need scheduling headroom.
+
+**Rule of thumb**
+
+| Scenario | Recommended concurrency |
+|----------|------------------------|
+| Small objects (< 5 MB) | Doesn't matter; uploader falls back to single `PutObject` |
+| Large objects, 1 Gbps same-region | 5–10 |
+| Large objects, 10 Gbps or cross-region | 10–20 |
+| Many parallel uploads (20+) per pod | Keep at 5–10 to avoid memory pressure |
+
+Start with the default (5), measure latency and memory under load, and increase only if you have headroom.
 
 ## Metrics
 
