@@ -505,7 +505,7 @@
     .t-dot-r { background: #ff5f56; }
     .t-dot-y { background: #ffbd2e; }
     .t-dot-g { background: #27c93f; }
-    .t-title { margin-left: 10px; color: var(--text-tertiary); font-size: 0.72rem; }
+    .t-title { margin-left: 10px; color: var(--text-tertiary); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .terminal-body { padding: 24px 26px; }
     .terminal-body .c { color: var(--text-tertiary); }
@@ -1428,7 +1428,7 @@
           <span class="t-dot t-dot-r"></span>
           <span class="t-dot t-dot-y"></span>
           <span class="t-dot t-dot-g"></span>
-          <span class="t-title">prometheus metrics — /metrics</span>
+          <span class="t-title">/metrics</span>
         </div>
         <div class="terminal-body">
           <span class="c"># HELP gradle_cache_requests_total Total HTTP requests</span><br>
