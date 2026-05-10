@@ -674,8 +674,36 @@
       box-shadow: var(--shadow-sm);
     }
 
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+    }
+
+    .code-header .code-lang {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    .code-header .code-lang::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.5;
+    }
+
     .code-block pre {
-      padding: 28px;
+      padding: 24px 28px;
       overflow-x: auto;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.82rem;
@@ -685,9 +713,9 @@
 
     .copy-btn {
       position: absolute;
-      top: 14px;
-      right: 14px;
-      padding: 7px 14px;
+      top: 10px;
+      right: 12px;
+      padding: 6px 14px;
       border-radius: 8px;
       background: var(--bg-surface);
       border: 1px solid var(--border);
@@ -699,6 +727,7 @@
       font-family: inherit;
       opacity: 0;
       transform: translateY(-4px);
+      z-index: 2;
     }
 
     .code-block:hover .copy-btn {
@@ -720,13 +749,40 @@
       transform: translateY(0);
     }
 
+    .copy-tooltip {
+      position: absolute;
+      top: -36px;
+      right: 0;
+      padding: 6px 12px;
+      background: var(--text);
+      color: var(--bg);
+      font-size: 0.72rem;
+      font-weight: 600;
+      border-radius: 8px;
+      white-space: nowrap;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: all 0.2s var(--ease-out-expo);
+      pointer-events: none;
+    }
+
+    .copy-tooltip.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     /* ========== TABS ========== */
     .tabs {
       display: flex;
-      gap: 6px;
-      margin-bottom: 20px;
+      gap: 8px;
+      margin-bottom: 24px;
       flex-wrap: wrap;
       position: relative;
+      padding: 6px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: fit-content;
     }
 
     .tab {
@@ -741,14 +797,26 @@
       transition: all 0.25s var(--ease-out-expo);
       font-family: inherit;
       position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .tab:hover { color: var(--text-secondary); }
     .tab.active {
       background: var(--bg-surface);
       color: var(--text);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-sm), 0 1px 2px rgba(0,0,0,0.05);
     }
+
+    .tab svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+
+    .tab.active svg { opacity: 1; }
 
     .tab-panel {
       display: none;
@@ -1430,15 +1498,27 @@
     </div>
 
     <div class="tabs reveal reveal-delay-1">
-      <button class="tab active" data-tab="run">Binary</button>
-      <button class="tab" data-tab="docker">Docker</button>
-      <button class="tab" data-tab="helm">Helm</button>
-
-      <button class="tab" data-tab="gradle">Gradle Client</button>
+      <button class="tab active" data-tab="run">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        Binary
+      </button>
+      <button class="tab" data-tab="docker">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Docker
+      </button>
+      <button class="tab" data-tab="helm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        Helm
+      </button>
+      <button class="tab" data-tab="gradle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Gradle Client
+      </button>
     </div>
 
     <div class="tab-panel active" id="panel-run">
       <div class="code-block">
+        <div class="code-header"><span class="code-lang">bash</span><span>terminal</span></div>
         <button class="copy-btn" data-copy>Copy</button>
         <pre>make build
 
@@ -1449,6 +1529,7 @@
 export STORAGE_TYPE=s3
 export S3_BUCKET=my-gradle-cache
 export S3_REGION=us-east-1
+export S3_CONCURRENCY=15
 ./go-gradle-cache
 
 # With upload limit (10 MiB)
@@ -1463,6 +1544,7 @@ export S3_REGION=us-east-1
 
     <div class="tab-panel" id="panel-docker">
       <div class="code-block">
+        <div class="code-header"><span class="code-lang">bash</span><span>Dockerfile</span></div>
         <button class="copy-btn" data-copy>Copy</button>
         <pre># Multi-stage Alpine build (~15 MB final image)
 docker build -t go-gradle-cache .
@@ -1472,6 +1554,7 @@ docker run -p 8080:8080 \
   -e STORAGE_TYPE=s3 \
   -e S3_BUCKET=my-cache \
   -e S3_REGION=us-east-1 \
+  -e S3_CONCURRENCY=15 \
   -e AUTH_USERNAME=gradle \
   -e AUTH_PASSWORD=change-me \
   -e AWS_ACCESS_KEY_ID=... \
@@ -1481,9 +1564,10 @@ docker run -p 8080:8080 \
     </div>
 
     <div class="tab-panel" id="panel-helm">
-      <div class="code-block">
+      <div class="code-block" style="margin-bottom: 16px;">
+        <div class="code-header"><span class="code-lang">bash</span><span>helm</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre># Install directly from the OCI registry (no repo add needed)
+        <pre># Install directly from the OCI registry
 helm install gradle-cache oci://ghcr.io/akrumov/go-gradle-cache --version 0.1.0
 
 # Install with a custom values file
@@ -1494,17 +1578,15 @@ helm install gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
 helm upgrade gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
   --version 0.1.0 -f my-values.yaml</pre>
       </div>
-      <p style="color: var(--text-tertiary); font-size: 0.82rem; margin-top: 14px; text-align: center;">
-        Also discoverable on <a href="https://artifacthub.io" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Artifact Hub</a>
-      </p>
-      <div style="margin-top: 20px;" class="code-block">
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">yaml</span><span>my-values.yaml</span></div>
         <button class="copy-btn" data-copy>Copy</button>
-        <pre># my-values.yaml — configure storage, scaling, and resources
-config:
+        <pre>config:
   storageType: s3
   s3Bucket: my-gradle-cache
   s3Region: us-east-1
   s3Endpoint: ""          # set for MinIO
+  s3Concurrency: 15       # parallel S3 part uploads
 
 replicaCount: 2
 
@@ -1520,11 +1602,11 @@ persistence:
 
 resources:
   requests:
-    memory: 128Mi
-    cpu: 100m
-  limits:
-    memory: 1Gi
+    memory: 2Gi
     cpu: 1000m
+  limits:
+    memory: 4Gi
+    cpu: 2000m
 
 secret:
   data:
@@ -1533,10 +1615,14 @@ secret:
     AUTH_USERNAME: "gradle"
     AUTH_PASSWORD: "change-me"</pre>
       </div>
+      <p style="color: var(--text-tertiary); font-size: 0.82rem; margin-top: 14px; text-align: center;">
+        Also discoverable on <a href="https://artifacthub.io" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Artifact Hub</a>
+      </p>
     </div>
 
     <div class="tab-panel" id="panel-gradle">
       <div class="code-block">
+        <div class="code-header"><span class="code-lang">kotlin</span><span>settings.gradle.kts</span></div>
         <button class="copy-btn" data-copy>Copy</button>
         <pre>// settings.gradle.kts
 buildCache {
@@ -1583,7 +1669,7 @@ org.gradle.caching=true</pre>
           </span>
           Resource-conscious
         </h3>
-        <p>Default requests are 128 MiB memory and 100m CPU, fully tunable through Helm values. The Go runtime stays lean under load.</p>
+        <p>Production defaults are 2 GiB memory request and 1 CPU, fully tunable through Helm values. Concurrency-aware for high-throughput S3 workloads.</p>
       </div>
     </div>
   </div>
@@ -1729,12 +1815,20 @@ org.gradle.caching=true</pre>
 
   // Copy buttons
   document.querySelectorAll('[data-copy]').forEach(btn => {
+    const tooltip = document.createElement('div');
+    tooltip.className = 'copy-tooltip';
+    tooltip.textContent = 'Copied to clipboard';
+    btn.appendChild(tooltip);
+
     btn.addEventListener('click', async () => {
       const code = btn.nextElementSibling.innerText;
       await navigator.clipboard.writeText(code);
-      btn.textContent = 'Copied!';
       btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+      tooltip.classList.add('show');
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        tooltip.classList.remove('show');
+      }, 1500);
     });
   });
 </script>
