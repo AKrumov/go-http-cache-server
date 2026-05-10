@@ -20,7 +20,7 @@ var (
 			Name:    "gradle_cache_request_duration_seconds",
 			Help:    "Duration of HTTP requests handled by the cache server.",
 			Buckets: prometheus.DefBuckets,
-		}, []string{"method", "handler", "status", "cache_id"},
+		}, []string{"method", "handler", "status"},
 	)
 	cacheHitCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -79,7 +79,7 @@ func Handler() http.Handler {
 
 func ObserveRequest(method, handlerName, status, cacheID string, duration time.Duration) {
 	requestCounter.WithLabelValues(method, handlerName, status, cacheID).Inc()
-	requestDuration.WithLabelValues(method, handlerName, status, cacheID).Observe(duration.Seconds())
+	requestDuration.WithLabelValues(method, handlerName, status).Observe(duration.Seconds())
 }
 
 func CacheHit(cacheID string) {
