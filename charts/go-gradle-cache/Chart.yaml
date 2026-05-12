@@ -2,7 +2,7 @@ apiVersion: v2
 name: go-gradle-cache
 description: A Helm chart for the Go Gradle remote build cache server
 type: application
-version: 0.1.3
+version: 0.1.4
 appVersion: "latest"
 home: https://github.com/AKrumov/go-gradle-cache
 icon: https://raw.githubusercontent.com/AKrumov/go-gradle-cache/main/docs/logo.png
