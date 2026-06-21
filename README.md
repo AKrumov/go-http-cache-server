@@ -4,11 +4,11 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/AKrumov/go-gradle-cache)](https://goreportcard.com/report/github.com/AKrumov/go-gradle-cache)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports both local filesystem and S3-compatible storage backends (AWS S3, MinIO, etc.). Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
+A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports local filesystem, S3-compatible storage (AWS S3, MinIO, etc.), and a hybrid mode that caches locally while backing everything with S3. Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
 
 ## Features
 
-- **Dual Storage Backends** — switch between local filesystem and S3 with a single flag
+- **Multiple Storage Backends** — local filesystem, S3, or a hybrid local+S3 tiered cache
 - **S3-Compatible** — works with AWS S3, MinIO, Wasabi, DigitalOcean Spaces, and more
 - **Prometheus Metrics** — request counts, durations, cache hit/miss ratios, bytes stored/served
 - **Graceful Shutdown** — handles SIGINT/SIGTERM properly
@@ -43,6 +43,20 @@ go run ./app \
   -s3-region=us-east-1
 ```
 
+### Hybrid (Local + S3)
+
+In hybrid mode the server serves cache entries from the local filesystem when possible. If an entry is missing locally, it is downloaded from S3, stored locally, and then served. On PUT, entries are persisted to both local storage and S3.
+
+```bash
+go run ./app \
+  -storage=hybrid \
+  -dir=./cache-data \
+  -s3-bucket=my-gradle-cache \
+  -s3-region=us-east-1 \
+  -local-ttl=7d \
+  -local-cleanup-interval=24h
+```
+
 ## Configuration
 
 Every option can be set via **command-line flag** or **environment variable**. Flags take precedence over environment variables.
@@ -50,8 +64,10 @@ Every option can be set via **command-line flag** or **environment variable**. F
 | Flag | Environment Variable | Default | Description |
 |------|---------------------|---------|-------------|
 | `-listen` | — | `:8080` | Address to listen on |
-| `-storage` | `STORAGE_TYPE` | `local` | Backend: `local` or `s3` |
+| `-storage` | `STORAGE_TYPE` | `local` | Backend: `local`, `s3`, or `hybrid` |
 | `-dir` | `LOCAL_DIR` | `./cache-data` | Local cache directory |
+| `-local-ttl` | `LOCAL_TTL` | `0` | Local cache TTL based on last access time (`0` = disabled, e.g. `24h`, `7d`) |
+| `-local-cleanup-interval` | `LOCAL_CLEANUP_INTERVAL` | `24h` | Interval between local cache cleanup runs (e.g. `1h`, `1d`) |
 | `-s3-bucket` | `S3_BUCKET` | — | S3 bucket name |
 | `-s3-prefix` | `S3_PREFIX` | — | S3 key prefix |
 | `-s3-region` | `S3_REGION` | — | AWS region |
@@ -105,6 +121,36 @@ export S3_REGION=us-east-1
 ./go-gradle-cache -s3-bucket=another-bucket
 ```
 
+### Local Cache TTL / Eviction
+
+When `local` or `hybrid` storage is used, you can enable automatic eviction of local cache entries that have not been accessed for a configured TTL. A background job runs at `-local-cleanup-interval` (default once per day) and deletes stale files immediately. There is no trash/archive folder.
+
+```bash
+go run ./app \
+  -storage=hybrid \
+  -dir=./cache-data \
+  -s3-bucket=my-gradle-cache \
+  -s3-region=us-east-1 \
+  -local-ttl=7d
+```
+
+**Important — access time (`atime`) mount option:**
+
+The TTL check relies on the file's last access time. Many Linux distributions and containers mount filesystems with `relatime` or `noatime` for performance. For accurate eviction, mount the cache directory with `strictatime`:
+
+```bash
+mount -o remount,strictatime /path/to/cache-data
+```
+
+In Kubernetes, use `mountOptions` on the PV/PVC:
+
+```yaml
+mountOptions:
+  - strictatime
+```
+
+If `noatime` is in effect, files will appear never to have been accessed and may all be evicted on the first cleanup run.
+
 ### AWS Credentials
 
 The server uses the standard AWS SDK credential chain:
@@ -132,6 +178,17 @@ docker run -p 8080:8080 \
   -e AWS_ACCESS_KEY_ID=xxx \
   -e AWS_SECRET_ACCESS_KEY=yyy \
   -e STORAGE_TYPE=s3 \
+  -e S3_BUCKET=my-gradle-cache \
+  -e S3_REGION=us-east-1 \
+  go-gradle-cache
+
+# Hybrid storage
+docker run -p 8080:8080 \
+  -v $(pwd)/cache-data:/app/cache-data \
+  -e AWS_ACCESS_KEY_ID=xxx \
+  -e AWS_SECRET_ACCESS_KEY=yyy \
+  -e STORAGE_TYPE=hybrid \
+  -e LOCAL_DIR=/app/cache-data \
   -e S3_BUCKET=my-gradle-cache \
   -e S3_REGION=us-east-1 \
   go-gradle-cache

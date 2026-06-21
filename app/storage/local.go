@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -150,4 +152,55 @@ func (l *Local) Put(ctx context.Context, key string, r io.Reader, size int64) er
 	}
 
 	return nil
+}
+
+// StartCleanup launches a background goroutine that deletes local cache
+// entries whose last access time is older than ttl. It runs immediately,
+// then every interval, and stops when ctx is canceled.
+func (l *Local) StartCleanup(ctx context.Context, ttl, interval time.Duration) {
+	go func() {
+		l.runCleanup(ttl)
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				l.runCleanup(ttl)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func (l *Local) runCleanup(ttl time.Duration) {
+	now := time.Now()
+	err := filepath.WalkDir(l.root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		at, err := accessTime(path)
+		if err != nil {
+			log.Printf("error reading access time for %s: %v", path, err)
+			return nil
+		}
+
+		if now.Sub(at) > ttl {
+			if err := l.fs.remove(path); err != nil {
+				log.Printf("error evicting stale cache entry %s: %v", path, err)
+			} else {
+				log.Printf("evicted stale cache entry %s (last access %s)", path, at.Format(time.RFC3339))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("error walking local cache for cleanup: %v", err)
+	}
 }

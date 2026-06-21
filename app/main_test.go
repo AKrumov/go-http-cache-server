@@ -40,6 +40,43 @@ func (m *mockBackend) Put(ctx context.Context, key string, r io.Reader, size int
 	return nil
 }
 
+// cacheRequest executes a cache request against a CacheServer and returns the recorder.
+func cacheRequest(cs *CacheServer, method, path string, body io.Reader) *httptest.ResponseRecorder {
+	return cacheRequestWithLen(cs, method, path, body, -1)
+}
+
+// cacheRequestWithLen executes a cache request with an explicit Content-Length.
+func cacheRequestWithLen(cs *CacheServer, method, path string, body io.Reader, contentLen int64) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, body)
+	if contentLen >= 0 {
+		req.ContentLength = contentLen
+	}
+	cs.handleCache(rr, req)
+	return rr
+}
+
+func assertStatus(t *testing.T, rr *httptest.ResponseRecorder, want int) {
+	t.Helper()
+	if rr.Code != want {
+		t.Errorf("status = %d, want %d", rr.Code, want)
+	}
+}
+
+func assertHeader(t *testing.T, rr *httptest.ResponseRecorder, key, want string) {
+	t.Helper()
+	if got := rr.Header().Get(key); got != want {
+		t.Errorf("%s = %q, want %q", key, got, want)
+	}
+}
+
+func assertBody(t *testing.T, rr *httptest.ResponseRecorder, want string) {
+	t.Helper()
+	if got := rr.Body.String(); got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
 func TestParseCachePath(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -64,6 +101,7 @@ func TestParseCachePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			id, key, err := parseCachePath(tt.path)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("parseCachePath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
@@ -78,6 +116,7 @@ func TestParseCachePath(t *testing.T) {
 }
 
 func TestMakeStorageKey(t *testing.T) {
+	t.Parallel()
 	if got := makeStorageKey("myid", "foo/bar"); got != "myid/foo/bar" {
 		t.Fatalf("makeStorageKey = %q, want myid/foo/bar", got)
 	}
@@ -85,6 +124,7 @@ func TestMakeStorageKey(t *testing.T) {
 
 func TestStatusResponseWriter(t *testing.T) {
 	t.Run("write header once", func(t *testing.T) {
+		t.Parallel()
 		rr := httptest.NewRecorder()
 		sw := &statusResponseWriter{ResponseWriter: rr, status: http.StatusOK}
 		sw.WriteHeader(http.StatusNotFound)
@@ -100,6 +140,7 @@ func TestStatusResponseWriter(t *testing.T) {
 	})
 
 	t.Run("write header twice is idempotent", func(t *testing.T) {
+		t.Parallel()
 		rr := httptest.NewRecorder()
 		sw := &statusResponseWriter{ResponseWriter: rr, status: http.StatusOK}
 		sw.WriteHeader(http.StatusNotFound)
@@ -113,6 +154,7 @@ func TestStatusResponseWriter(t *testing.T) {
 	})
 
 	t.Run("write triggers default 200", func(t *testing.T) {
+		t.Parallel()
 		rr := httptest.NewRecorder()
 		sw := &statusResponseWriter{ResponseWriter: rr, status: http.StatusOK}
 		_, _ = sw.Write([]byte("hi"))
@@ -125,6 +167,7 @@ func TestStatusResponseWriter(t *testing.T) {
 	})
 
 	t.Run("write after explicit header", func(t *testing.T) {
+		t.Parallel()
 		rr := httptest.NewRecorder()
 		sw := &statusResponseWriter{ResponseWriter: rr, status: http.StatusOK}
 		sw.WriteHeader(http.StatusCreated)
@@ -144,141 +187,139 @@ func (e *errorReader) Read([]byte) (int, error) {
 }
 
 func TestCacheServerHandleHead(t *testing.T) {
-	t.Run("hit", func(t *testing.T) {
-		be := &mockBackend{
-			headFunc: func(ctx context.Context, key string) (int64, bool, error) {
-				return 42, true, nil
+	tests := []struct {
+		name       string
+		backend    *mockBackend
+		path       string
+		wantStatus int
+		wantLen    string
+	}{
+		{
+			name: "hit",
+			backend: &mockBackend{
+				headFunc: func(ctx context.Context, key string) (int64, bool, error) {
+					return 42, true, nil
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodHead, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
-		}
-		if rr.Header().Get("Content-Length") != "42" {
-			t.Fatalf("Content-Length = %q, want 42", rr.Header().Get("Content-Length"))
-		}
-	})
-
-	t.Run("miss", func(t *testing.T) {
-		be := &mockBackend{
-			headFunc: func(ctx context.Context, key string) (int64, bool, error) {
-				return 0, false, nil
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusOK,
+			wantLen:    "42",
+		},
+		{
+			name: "miss",
+			backend: &mockBackend{
+				headFunc: func(ctx context.Context, key string) (int64, bool, error) {
+					return 0, false, nil
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodHead, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusNotFound {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusNotFound)
-		}
-	})
-
-	t.Run("error", func(t *testing.T) {
-		be := &mockBackend{
-			headFunc: func(ctx context.Context, key string) (int64, bool, error) {
-				return 0, false, errors.New("fail")
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "error",
+			backend: &mockBackend{
+				headFunc: func(ctx context.Context, key string) (int64, bool, error) {
+					return 0, false, errors.New("fail")
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodHead, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusInternalServerError {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-	})
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "invalid path",
+			backend:    &mockBackend{},
+			path:       "/cache/",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
 
-	t.Run("invalid path", func(t *testing.T) {
-		cs := NewCacheServer(&mockBackend{}, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodHead, "/cache/", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cs := NewCacheServer(tt.backend, 0)
+			rr := cacheRequest(cs, http.MethodHead, tt.path, nil)
+			assertStatus(t, rr, tt.wantStatus)
+			if tt.wantLen != "" {
+				assertHeader(t, rr, "Content-Length", tt.wantLen)
+			}
+		})
+	}
 }
 
 func TestCacheServerHandleGet(t *testing.T) {
-	t.Run("hit seekable", func(t *testing.T) {
-		be := &mockBackend{
-			getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
-				return io.NopCloser(strings.NewReader("data")), 4, time.Now(), true, nil
+	tests := []struct {
+		name       string
+		backend    *mockBackend
+		path       string
+		wantStatus int
+		wantBody   string
+		wantLen    string
+	}{
+		{
+			name: "hit seekable",
+			backend: &mockBackend{
+				getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
+					return io.NopCloser(strings.NewReader("data")), 4, time.Now(), true, nil
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
-		}
-		if rr.Body.String() != "data" {
-			t.Fatalf("body = %q, want data", rr.Body.String())
-		}
-	})
-
-	t.Run("hit non-seekable", func(t *testing.T) {
-		be := &mockBackend{
-			getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
-				return &readCloser{Reader: strings.NewReader("data")}, 4, time.Now(), true, nil
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusOK,
+			wantBody:   "data",
+		},
+		{
+			name: "hit non-seekable",
+			backend: &mockBackend{
+				getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
+					return &readCloser{Reader: strings.NewReader("data")}, 4, time.Now(), true, nil
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
-		}
-		if rr.Body.String() != "data" {
-			t.Fatalf("body = %q, want data", rr.Body.String())
-		}
-	})
-
-	t.Run("miss", func(t *testing.T) {
-		be := &mockBackend{
-			getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
-				return nil, 0, time.Time{}, false, nil
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusOK,
+			wantBody:   "data",
+			wantLen:    "4",
+		},
+		{
+			name: "miss",
+			backend: &mockBackend{
+				getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
+					return nil, 0, time.Time{}, false, nil
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusNotFound {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusNotFound)
-		}
-	})
-
-	t.Run("error", func(t *testing.T) {
-		be := &mockBackend{
-			getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
-				return nil, 0, time.Time{}, false, errors.New("fail")
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "error",
+			backend: &mockBackend{
+				getFunc: func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error) {
+					return nil, 0, time.Time{}, false, errors.New("fail")
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/cache/myid/foo", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusInternalServerError {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-	})
+			path:       "/cache/myid/foo",
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "invalid path",
+			backend:    &mockBackend{},
+			path:       "/cache/",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
 
-	t.Run("invalid path", func(t *testing.T) {
-		cs := NewCacheServer(&mockBackend{}, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/cache/", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cs := NewCacheServer(tt.backend, 0)
+			rr := cacheRequest(cs, http.MethodGet, tt.path, nil)
+			assertStatus(t, rr, tt.wantStatus)
+			if tt.wantBody != "" {
+				assertBody(t, rr, tt.wantBody)
+			}
+			if tt.wantLen != "" {
+				assertHeader(t, rr, "Content-Length", tt.wantLen)
+			}
+		})
+	}
 }
 
 // readCloser wraps an io.Reader without providing io.Seeker.
@@ -289,76 +330,85 @@ type readCloser struct {
 func (r *readCloser) Close() error { return nil }
 
 func TestCacheServerHandlePut(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		be := &mockBackend{
-			putFunc: func(ctx context.Context, key string, r io.Reader, size int64) error {
-				data, _ := io.ReadAll(r)
-				if string(data) != "payload" {
-					t.Fatalf("payload = %q, want payload", string(data))
-				}
-				return nil
+	tests := []struct {
+		name       string
+		backend    *mockBackend
+		maxUpload  int64
+		path       string
+		body       string
+		contentLen int64
+		wantStatus int
+		wantBody   string
+	}{
+		// default path is set in the loop
+		{
+			name: "success",
+			backend: &mockBackend{
+				putFunc: func(ctx context.Context, key string, r io.Reader, size int64) error {
+					data, _ := io.ReadAll(r)
+					if string(data) != "payload" {
+						t.Errorf("payload = %q, want payload", string(data))
+					}
+					return nil
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/cache/myid/foo", strings.NewReader("payload"))
-		req.ContentLength = 7
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusCreated {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusCreated)
-		}
-	})
-
-	t.Run("empty body", func(t *testing.T) {
-		cs := NewCacheServer(&mockBackend{}, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/cache/myid/foo", strings.NewReader(""))
-		req.ContentLength = 0
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
-
-	t.Run("body too large", func(t *testing.T) {
-		cs := NewCacheServer(&mockBackend{}, 100)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/cache/myid/foo", strings.NewReader("x"))
-		req.ContentLength = 101
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusRequestEntityTooLarge {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
-		}
-	})
-
-	t.Run("backend error", func(t *testing.T) {
-		be := &mockBackend{
-			putFunc: func(ctx context.Context, key string, r io.Reader, size int64) error {
-				return errors.New("fail")
+			body:       "payload",
+			contentLen: 7,
+			wantStatus: http.StatusCreated,
+			wantBody:   "payload",
+		},
+		{
+			name:       "empty body",
+			backend:    &mockBackend{},
+			body:       "",
+			contentLen: 0,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "body too large",
+			backend:    &mockBackend{},
+			maxUpload:  100,
+			body:       "x",
+			contentLen: 101,
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name: "backend error",
+			backend: &mockBackend{
+				putFunc: func(ctx context.Context, key string, r io.Reader, size int64) error {
+					return errors.New("fail")
+				},
 			},
-		}
-		cs := NewCacheServer(be, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/cache/myid/foo", strings.NewReader("payload"))
-		req.ContentLength = 7
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusInternalServerError {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-	})
+			body:       "payload",
+			contentLen: 7,
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "invalid path",
+			backend:    &mockBackend{},
+			path:       "/cache/",
+			body:       "payload",
+			contentLen: 7,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
 
-	t.Run("invalid path", func(t *testing.T) {
-		cs := NewCacheServer(&mockBackend{}, 0)
-		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPut, "/cache/", nil)
-		cs.handleCache(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("code = %d, want %d", rr.Code, http.StatusBadRequest)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cs := NewCacheServer(tt.backend, tt.maxUpload)
+			path := tt.path
+			if path == "" {
+				path = "/cache/myid/foo"
+			}
+			rr := cacheRequestWithLen(cs, http.MethodPut, path, strings.NewReader(tt.body), tt.contentLen)
+			assertStatus(t, rr, tt.wantStatus)
+		})
+	}
 }
 
 func TestCacheServerInvalidMethod(t *testing.T) {
+	t.Parallel()
 	cs := NewCacheServer(&mockBackend{}, 0)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/cache/myid/foo", nil)
@@ -370,6 +420,7 @@ func TestCacheServerInvalidMethod(t *testing.T) {
 
 func TestCacheServerBasicAuth(t *testing.T) {
 	t.Run("disabled by default", func(t *testing.T) {
+		t.Parallel()
 		be := &mockBackend{
 			headFunc: func(ctx context.Context, key string) (int64, bool, error) {
 				return 1, true, nil
@@ -387,6 +438,7 @@ func TestCacheServerBasicAuth(t *testing.T) {
 	})
 
 	t.Run("requires credentials", func(t *testing.T) {
+		t.Parallel()
 		auth, err := newAuthConfig("gradle", "secret")
 		if err != nil {
 			t.Fatal(err)
@@ -406,6 +458,7 @@ func TestCacheServerBasicAuth(t *testing.T) {
 	})
 
 	t.Run("accepts valid credentials", func(t *testing.T) {
+		t.Parallel()
 		auth, err := newAuthConfig("gradle", "secret")
 		if err != nil {
 			t.Fatal(err)
@@ -430,6 +483,7 @@ func TestCacheServerBasicAuth(t *testing.T) {
 
 func TestHandleHealth(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 		cs := NewCacheServer(&mockBackend{}, 0)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -443,6 +497,7 @@ func TestHandleHealth(t *testing.T) {
 	})
 
 	t.Run("method not allowed", func(t *testing.T) {
+		t.Parallel()
 		cs := NewCacheServer(&mockBackend{}, 0)
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/health", nil)
@@ -454,6 +509,7 @@ func TestHandleHealth(t *testing.T) {
 }
 
 func TestInstrument(t *testing.T) {
+	t.Parallel()
 	cs := NewCacheServer(&mockBackend{}, 0)
 	called := false
 	handler := cs.instrument("test", func(w http.ResponseWriter, r *http.Request) {
@@ -586,6 +642,77 @@ func TestRunS3MissingBucket(t *testing.T) {
 	err := run(context.Background(), []string{"-storage", "s3"})
 	if err == nil {
 		t.Fatal("expected error for missing S3 bucket")
+	}
+}
+
+func TestRunHybrid(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "0")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go func() {
+		_ = run(ctx, []string{
+			"-listen", ":28082",
+			"-storage", "hybrid",
+			"-dir", t.TempDir(),
+			"-s3-bucket", "test-bucket",
+			"-s3-endpoint", srv.URL,
+		})
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	resp, err := http.Get("http://localhost:28082/health")
+	if err != nil {
+		t.Fatalf("health check failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	cancel()
+}
+
+func TestRunHybridMissingBucket(t *testing.T) {
+	err := run(context.Background(), []string{"-storage", "hybrid", "-dir", t.TempDir()})
+	if err == nil {
+		t.Fatal("expected error for missing S3 bucket in hybrid mode")
+	}
+}
+
+func TestParseDurationWithDays(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Duration
+		wantErr bool
+	}{
+		{"empty", "", 0, false},
+		{"zero", "0", 0, false},
+		{"hours", "24h", 24 * time.Hour, false},
+		{"days", "7d", 7 * 24 * time.Hour, false},
+		{"days uppercase", "3D", 3 * 24 * time.Hour, false},
+		{"fractional days", "1.5d", 36 * time.Hour, false},
+		{"minutes", "30m", 30 * time.Minute, false},
+		{"invalid", "not-a-duration", 0, true},
+		{"invalid days", "xd", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseDurationWithDays(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseDurationWithDays(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("parseDurationWithDays(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 

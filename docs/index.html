@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>go-gradle-cache — Remote build cache server for Gradle</title>
-  <meta name="description" content="A production-ready remote build cache server for Gradle. Written in Go. Supports local filesystem, S3-compatible storage, HTTP Basic authentication, and Prometheus metrics.">
+  <meta name="description" content="A production-ready remote build cache server for Gradle. Written in Go. Supports local filesystem, S3-compatible storage, hybrid local+S3 tiered caching with TTL eviction, HTTP Basic authentication, and Prometheus metrics.">
   <meta property="og:title" content="go-gradle-cache — Remote build cache server for Gradle">
-  <meta property="og:description" content="Cut build times with a dedicated, production-ready Gradle remote cache. Single binary, S3-backed, Prometheus metrics, Helm chart included.">
+  <meta property="og:description" content="Cut build times with a dedicated, production-ready Gradle remote cache. Single binary, S3-backed or hybrid local+S3 with TTL eviction, Prometheus metrics, Helm chart included.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://akrumov.github.io/go-gradle-cache/logo.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -1337,7 +1337,7 @@
       <div class="eyebrow">Production-ready remote cache</div>
       <h1>Cut build times with a dedicated cache server.</h1>
       <p>
-        A focused, high-performance remote build cache for Gradle. Implements the standard HTTP build cache protocol with pluggable storage, optional Basic authentication, built-in observability, and zero external dependencies beyond your chosen backend.
+        A focused, high-performance remote build cache for Gradle. Implements the standard HTTP build cache protocol with pluggable storage, optional Basic authentication, built-in observability, and zero external dependencies beyond your chosen backend. Includes a hybrid local+S3 mode with configurable local-cache TTL eviction.
       </p>
       <div class="hero-stats">
         <div class="stat">
@@ -1373,7 +1373,13 @@
         <span class="c"># Or point it at S3</span><br>
         <span class="k">$</span> go run ./app <span class="v">-storage</span>=s3 \
         <br>&nbsp;&nbsp;<span class="v">-s3-bucket</span>=<span class="s">my-cache</span> \
-        <br>&nbsp;&nbsp;<span class="v">-s3-region</span>=<span class="s">us-east-1</span><span class="cursor"></span>
+        <br>&nbsp;&nbsp;<span class="v">-s3-region</span>=<span class="s">us-east-1</span><br><br>
+        <span class="c"># Or use hybrid: local cache backed by S3, with TTL eviction</span><br>
+        <span class="k">$</span> go run ./app <span class="v">-storage</span>=hybrid \
+        <br>&nbsp;&nbsp;<span class="v">-dir</span>=./cache \
+        <br>&nbsp;&nbsp;<span class="v">-s3-bucket</span>=<span class="s">my-cache</span> \
+        <br>&nbsp;&nbsp;<span class="v">-s3-region</span>=<span class="s">us-east-1</span> \
+        <br>&nbsp;&nbsp;<span class="v">-local-ttl</span>=<span class="s">7d</span><span class="cursor"></span>
       </div>
     </div>
   </div>
@@ -1416,7 +1422,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         </div>
         <h4>Storage Backend</h4>
-        <p>Local filesystem with atomic writes, or S3-compatible object store with path-style endpoint support.</p>
+        <p>Local filesystem, S3-compatible object store, or a hybrid tier that caches locally and backs everything with S3.</p>
         <div class="d-tag">Pluggable</div>
       </div>
     </div>
@@ -1518,10 +1524,10 @@
     <div class="section-header reveal">
       <div class="section-label">Storage</div>
       <h2>Swap backends without changing code.</h2>
-      <p>Both implementations satisfy the same three-method interface. Switching from local disk to S3 is a single flag change.</p>
+      <p>All implementations satisfy the same three-method interface. Switch from local disk to S3, or to a hybrid tier that combines both, with a single flag change.</p>
     </div>
 
-    <div class="grid-2">
+    <div class="grid-3">
       <div class="card reveal reveal-delay-1">
         <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 24px;">
           <div class="card-icon">
@@ -1563,6 +1569,37 @@
           <strong>Key prefixes</strong> — optional <code>S3_PREFIX</code> lets you share a single bucket across multiple cache servers or environments.
         </div>
       </div>
+
+      <div class="card reveal reveal-delay-3">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 24px;">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div>
+            <h3 style="margin-bottom: 3px;">Hybrid Local + S3</h3>
+            <p style="font-size: 0.82rem; color: var(--text-tertiary); margin: 0;">Best of both: speed of local, durability of S3</p>
+          </div>
+        </div>
+        <div class="compare-item">
+          <strong>Local-first reads</strong> — serve cache entries from local disk. If missing, download from S3, store locally, then serve.
+        </div>
+        <div class="compare-item">
+          <strong>Dual writes</strong> — every PUT persists to both local storage and S3, so replicas and rebuilds can still fetch from S3.
+        </div>
+        <div class="compare-item">
+          <strong>Local TTL eviction</strong> — automatic daily cleanup removes local entries not accessed for the configured TTL. Mount with <code>strictatime</code> for accurate tracking.
+        </div>
+      </div>
+    </div>
+
+    <div class="card reveal" style="margin-top: 24px; background: rgba(26, 188, 156, 0.04);">
+      <h3 style="margin-bottom: 10px; display: flex; align-items: center; gap: 12px;">
+        <span class="card-icon" style="width: 32px; height: 32px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </span>
+        Local TTL depends on access-time tracking
+      </h3>
+      <p>The cleanup job uses each file's last access time (<code>atime</code>). Many Linux systems mount volumes with <code>relatime</code> or <code>noatime</code> for performance. For accurate TTL eviction, mount your cache directory with <code>strictatime</code> (or add <code>mountOptions: [strictatime]</code> in Kubernetes).</p>
     </div>
   </div>
 </section>
@@ -1683,6 +1720,14 @@ export S3_REGION=us-east-1
 export S3_CONCURRENCY=15
 ./go-gradle-cache
 
+# Hybrid: local cache backed by S3, with 7-day local TTL
+export STORAGE_TYPE=hybrid
+export LOCAL_DIR=./cache-data
+export S3_BUCKET=my-gradle-cache
+export S3_REGION=us-east-1
+export LOCAL_TTL=7d
+./go-gradle-cache
+
 # With upload limit (10 MiB)
 ./go-gradle-cache -storage=local -dir=./cache -max-upload=10485760
 
@@ -1708,6 +1753,18 @@ docker run -p 8080:8080 \
   -e S3_CONCURRENCY=15 \
   -e AUTH_USERNAME=gradle \
   -e AUTH_PASSWORD=change-me \
+  -e AWS_ACCESS_KEY_ID=... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  go-gradle-cache
+
+# Hybrid with local TTL: mount a host volume for the local cache
+docker run -p 8080:8080 \
+  -v $(pwd)/cache-data:/app/cache-data \
+  -e STORAGE_TYPE=hybrid \
+  -e LOCAL_DIR=/app/cache-data \
+  -e LOCAL_TTL=7d \
+  -e S3_BUCKET=my-cache \
+  -e S3_REGION=us-east-1 \
   -e AWS_ACCESS_KEY_ID=... \
   -e AWS_SECRET_ACCESS_KEY=... \
   go-gradle-cache</code></pre>
@@ -1738,6 +1795,9 @@ helm upgrade gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
   s3Region: us-east-1
   s3Endpoint: ""          # set for MinIO
   s3Concurrency: 15       # parallel S3 part uploads
+  # localTTL and localCleanupInterval apply to local and hybrid storage
+  localTTL: "7d"
+  localCleanupInterval: "24h"
 
 replicaCount: 2
 

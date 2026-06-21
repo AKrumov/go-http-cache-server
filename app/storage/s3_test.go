@@ -99,32 +99,32 @@ func TestS3Head(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("exists", func(t *testing.T) {
-		size, exists, err := be.Head(context.Background(), "found")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !exists || size != 42 {
-			t.Fatalf("exists=%v size=%d", exists, size)
-		}
-	})
+	tests := []struct {
+		name       string
+		key        string
+		wantExists bool
+		wantSize   int64
+		wantErr    bool
+	}{
+		{"exists", "found", true, 42, false},
+		{"not found", "missing", false, 0, false},
+		{"error", "error/500", false, 0, true},
+	}
 
-	t.Run("not found", func(t *testing.T) {
-		_, exists, err := be.Head(context.Background(), "missing")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if exists {
-			t.Fatal("expected not found")
-		}
-	})
-
-	t.Run("error", func(t *testing.T) {
-		_, _, err := be.Head(context.Background(), "error/500")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			size, exists, err := be.Head(context.Background(), tt.key)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Head(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Fatalf("exists = %v, want %v", exists, tt.wantExists)
+			}
+			if exists && size != tt.wantSize {
+				t.Fatalf("size = %d, want %d", size, tt.wantSize)
+			}
+		})
+	}
 }
 
 func TestS3Get(t *testing.T) {
@@ -141,37 +141,36 @@ func TestS3Get(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("exists", func(t *testing.T) {
-		rc, size, _, exists, err := be.Get(context.Background(), "found")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !exists || size != 5 {
-			t.Fatalf("exists=%v size=%d", exists, size)
-		}
-		data, _ := io.ReadAll(rc)
-		rc.Close()
-		if string(data) != "hello" {
-			t.Fatalf("data = %q", string(data))
-		}
-	})
+	tests := []struct {
+		name       string
+		key        string
+		wantExists bool
+		wantBody   string
+		wantErr    bool
+	}{
+		{"exists", "found", true, "hello", false},
+		{"not found", "missing", false, "", false},
+		{"error", "error/500", false, "", true},
+	}
 
-	t.Run("not found", func(t *testing.T) {
-		_, _, _, exists, err := be.Get(context.Background(), "missing")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if exists {
-			t.Fatal("expected not found")
-		}
-	})
-
-	t.Run("error", func(t *testing.T) {
-		_, _, _, _, err := be.Get(context.Background(), "error/500")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc, _, _, exists, err := be.Get(context.Background(), tt.key)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Get(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Fatalf("exists = %v, want %v", exists, tt.wantExists)
+			}
+			if tt.wantBody != "" {
+				data, _ := io.ReadAll(rc)
+				rc.Close()
+				if string(data) != tt.wantBody {
+					t.Fatalf("body = %q, want %q", string(data), tt.wantBody)
+				}
+			}
+		})
+	}
 }
 
 func TestS3Put(t *testing.T) {
@@ -188,19 +187,23 @@ func TestS3Put(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("success", func(t *testing.T) {
-		err := be.Put(context.Background(), "found", strings.NewReader("data"), 4)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"success", "found", false},
+		{"error", "error/500", true},
+	}
 
-	t.Run("error", func(t *testing.T) {
-		err := be.Put(context.Background(), "error/500", strings.NewReader("data"), 4)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := be.Put(context.Background(), tt.key, strings.NewReader("data"), 4)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Put(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestS3Key(t *testing.T) {

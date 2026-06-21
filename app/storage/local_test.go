@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +109,7 @@ func (m *mockLocalFS) remove(name string) error {
 
 func TestNewLocal(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			mkdirAllFunc: func(path string, perm os.FileMode) error { return nil },
 		}
@@ -120,6 +123,7 @@ func TestNewLocal(t *testing.T) {
 	})
 
 	t.Run("mkdirAll fails", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			mkdirAllFunc: func(path string, perm os.FileMode) error {
 				return errors.New("no permission")
@@ -134,6 +138,7 @@ func TestNewLocal(t *testing.T) {
 
 func TestLocalHead(t *testing.T) {
 	t.Run("exists", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			statFunc: func(name string) (os.FileInfo, error) {
 				return mockFileInfo{size: 42}, nil
@@ -150,6 +155,7 @@ func TestLocalHead(t *testing.T) {
 	})
 
 	t.Run("not exists", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			statFunc: func(name string) (os.FileInfo, error) {
 				return nil, os.ErrNotExist
@@ -166,6 +172,7 @@ func TestLocalHead(t *testing.T) {
 	})
 
 	t.Run("stat error", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			statFunc: func(name string) (os.FileInfo, error) {
 				return nil, errors.New("io error")
@@ -181,6 +188,7 @@ func TestLocalHead(t *testing.T) {
 
 func TestLocalGet(t *testing.T) {
 	t.Run("exists", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			openFunc: func(name string) (fileHandle, error) {
 				return &mockFile{data: []byte("hello")}, nil
@@ -218,6 +226,7 @@ func TestLocalGet(t *testing.T) {
 	})
 
 	t.Run("open error", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			openFunc: func(name string) (fileHandle, error) {
 				return nil, errors.New("io error")
@@ -246,6 +255,7 @@ func TestLocalGet(t *testing.T) {
 
 func TestLocalPut(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{}
 		l, _ := newLocal("/tmp", fs)
 		err := l.Put(context.Background(), "myid/key", strings.NewReader("data"), 4)
@@ -271,6 +281,7 @@ func TestLocalPut(t *testing.T) {
 	})
 
 	t.Run("create fails", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			createFunc: func(name string) (fileHandle, error) {
 				return nil, errors.New("fail")
@@ -284,6 +295,7 @@ func TestLocalPut(t *testing.T) {
 	})
 
 	t.Run("copy fails", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{}
 		l, _ := newLocal("/tmp", fs)
 		err := l.Put(context.Background(), "myid/key", &errorReader{err: errors.New("fail")}, 4)
@@ -293,6 +305,7 @@ func TestLocalPut(t *testing.T) {
 	})
 
 	t.Run("close fails", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			createFunc: func(name string) (fileHandle, error) {
 				return &mockFile{closeErr: errors.New("close fail")}, nil
@@ -306,6 +319,7 @@ func TestLocalPut(t *testing.T) {
 	})
 
 	t.Run("rename fails", func(t *testing.T) {
+		t.Parallel()
 		fs := &mockLocalFS{
 			renameFunc: func(oldpath, newpath string) error {
 				return errors.New("rename fail")
@@ -371,4 +385,148 @@ type errorReader struct {
 
 func (e *errorReader) Read([]byte) (int, error) {
 	return 0, e.err
+}
+
+
+func TestLocalRunCleanup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	l, err := NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	freshKey := "cache/fresh.bin"
+	staleKey := "cache/stale.bin"
+	nestedStaleKey := "cache/nested/deep.bin"
+
+	// Store entries.
+	for _, key := range []string{freshKey, staleKey, nestedStaleKey} {
+		if err := l.Put(ctx, key, bytes.NewReader([]byte("data")), 4); err != nil {
+			t.Fatalf("Put %s: %v", key, err)
+		}
+	}
+
+	// Make some access times old.
+	oldAtime := time.Now().Add(-48 * time.Hour)
+	for _, key := range []string{staleKey, nestedStaleKey} {
+		if err := os.Chtimes(l.path(key), oldAtime, time.Now()); err != nil {
+			t.Fatalf("Chtimes %s: %v", key, err)
+		}
+	}
+
+	// Run cleanup with a 24-hour TTL.
+	l.runCleanup(24 * time.Hour)
+
+	// Stale files should be gone, fresh file should remain.
+	for _, key := range []string{staleKey, nestedStaleKey} {
+		if _, err := os.Stat(l.path(key)); !os.IsNotExist(err) {
+			t.Fatalf("stale file %s should have been removed, got err=%v", key, err)
+		}
+	}
+	if _, err := os.Stat(l.path(freshKey)); err != nil {
+		t.Fatalf("fresh file should remain: %v", err)
+	}
+}
+
+func TestLocalRunCleanupEmptyDir(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	l, err := NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not panic or error on an empty directory.
+	l.runCleanup(time.Hour)
+}
+
+func TestLocalStartCleanup(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dir := t.TempDir()
+	l, err := NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := "cache/old.bin"
+	if err := l.Put(ctx, key, bytes.NewReader([]byte("old")), 3); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	path := l.path(key)
+	if err := os.Chtimes(path, time.Now().Add(-2*time.Hour), time.Now()); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	l.StartCleanup(ctx, 1*time.Hour, 50*time.Millisecond)
+
+	// Wait for the initial cleanup run to complete.
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("stale file should have been removed by background cleanup, got err=%v", err)
+	}
+
+	cancel()
+}
+
+func TestLocalStartCleanupStopsOnContextDone(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	dir := t.TempDir()
+	l, err := NewLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l.StartCleanup(ctx, time.Hour, time.Millisecond)
+
+	// Give the goroutine a chance to start, then cancel it.
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	// If the goroutine does not stop, this test will leak a goroutine.
+	// The test itself passes if we reach here without panic.
+}
+
+
+func TestAccessTime(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "testfile")
+	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	at, err := accessTime(path)
+	if err != nil {
+		t.Fatalf("accessTime: %v", err)
+	}
+	if at.IsZero() {
+		t.Fatal("access time is zero")
+	}
+	if time.Since(at) > time.Minute {
+		t.Fatalf("access time too old: %v", at)
+	}
+
+	// Setting an explicit access time should be reflected.
+	oldAtime := time.Now().Add(-7 * 24 * time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(path, oldAtime, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	at, err = accessTime(path)
+	if err != nil {
+		t.Fatalf("accessTime after Chtimes: %v", err)
+	}
+	// Allow a small delta for filesystem precision.
+	if at.Before(oldAtime.Add(-time.Second)) || at.After(oldAtime.Add(time.Second)) {
+		t.Fatalf("access time = %v, want near %v", at, oldAtime)
+	}
 }

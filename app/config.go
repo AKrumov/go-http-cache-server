@@ -25,6 +25,23 @@ func envOrDefault(key, def string) string {
 	return def
 }
 
+// parseDurationWithDays parses a duration string supporting Go durations
+// plus an optional "d"/"D" suffix for days (e.g. "7d").
+func parseDurationWithDays(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "0" {
+		return 0, nil
+	}
+	if strings.HasSuffix(s, "d") || strings.HasSuffix(s, "D") {
+		days, err := strconv.ParseFloat(s[:len(s)-1], 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid day duration %q: %w", s, err)
+		}
+		return time.Duration(days * float64(24*time.Hour)), nil
+	}
+	return time.ParseDuration(s)
+}
+
 func run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("go-gradle-cache", flag.ContinueOnError)
 
@@ -43,9 +60,18 @@ func run(ctx context.Context, args []string) error {
 		authPass    string
 	)
 
+	localTTL, err := parseDurationWithDays(envOrDefault("LOCAL_TTL", "0"))
+	if err != nil {
+		return fmt.Errorf("invalid LOCAL_TTL: %w", err)
+	}
+	localCleanupInterval, err := parseDurationWithDays(envOrDefault("LOCAL_CLEANUP_INTERVAL", "24h"))
+	if err != nil {
+		return fmt.Errorf("invalid LOCAL_CLEANUP_INTERVAL: %w", err)
+	}
+
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	fs.StringVar(&listenAddr, "listen", ":8080", "address to listen on")
-	fs.StringVar(&storageType, "storage", envOrDefault("STORAGE_TYPE", "local"), "storage backend: local or s3")
+	fs.StringVar(&storageType, "storage", envOrDefault("STORAGE_TYPE", "local"), "storage backend: local, s3, or hybrid")
 	fs.StringVar(&cacheDir, "dir", envOrDefault("LOCAL_DIR", "./cache-data"), "directory to store cache entries (local storage)")
 	fs.StringVar(&s3Bucket, "s3-bucket", envOrDefault("S3_BUCKET", ""), "S3 bucket name")
 	fs.StringVar(&s3Prefix, "s3-prefix", envOrDefault("S3_PREFIX", ""), "S3 key prefix")
@@ -55,6 +81,8 @@ func run(ctx context.Context, args []string) error {
 	fs.Int64Var(&maxUpload, "max-upload", 0, "max upload size per cache entry in bytes (0 = unlimited)")
 	fs.StringVar(&authUser, "auth-username", envOrDefault("AUTH_USERNAME", ""), "HTTP Basic authentication username (disabled when empty)")
 	fs.StringVar(&authPass, "auth-password", envOrDefault("AUTH_PASSWORD", ""), "HTTP Basic authentication password (disabled when empty)")
+	fs.DurationVar(&localTTL, "local-ttl", localTTL, "local cache TTL based on last access time (e.g. 24h, 7d, 0=disabled)")
+	fs.DurationVar(&localCleanupInterval, "local-cleanup-interval", localCleanupInterval, "interval between local cache cleanup runs (e.g. 1h, 1d)")
 	if v := os.Getenv("S3_CONCURRENCY"); v != "" && s3Concurrency == 0 {
 		if n, err := strconv.Atoi(v); err == nil {
 			s3Concurrency = n
@@ -82,9 +110,13 @@ func run(ctx context.Context, args []string) error {
 
 	switch strings.ToLower(storageType) {
 	case "local":
-		backend, err = storage.NewLocal(cacheDir)
+		localBackend, err := storage.NewLocal(cacheDir)
 		if err != nil {
 			return fmt.Errorf("failed to create local storage: %w", err)
+		}
+		backend = localBackend
+		if localTTL > 0 {
+			localBackend.StartCleanup(ctx, localTTL, localCleanupInterval)
 		}
 	case "s3":
 		backend, err = storage.NewS3(ctx, storage.S3Options{
@@ -96,6 +128,28 @@ func run(ctx context.Context, args []string) error {
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create S3 storage: %w", err)
+		}
+	case "hybrid":
+		if s3Bucket == "" {
+			return fmt.Errorf("s3-bucket is required when storage type is hybrid")
+		}
+		localBackend, err := storage.NewLocal(cacheDir)
+		if err != nil {
+			return fmt.Errorf("failed to create local storage: %w", err)
+		}
+		s3Backend, err := storage.NewS3(ctx, storage.S3Options{
+			Bucket:      s3Bucket,
+			Prefix:      s3Prefix,
+			Region:      s3Region,
+			Endpoint:    s3Endpoint,
+			Concurrency: s3Concurrency,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create S3 storage: %w", err)
+		}
+		backend = storage.NewHybrid(localBackend, s3Backend)
+		if localTTL > 0 {
+			localBackend.StartCleanup(ctx, localTTL, localCleanupInterval)
 		}
 	default:
 		return fmt.Errorf("unknown storage type: %s", storageType)
