@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>go-http-cache-server — Remote build cache server for Gradle</title>
-  <meta name="description" content="A production-ready remote build cache server for Gradle. Written in Go. Supports local filesystem, S3-compatible storage, hybrid local+S3 tiered caching with TTL eviction, HTTP Basic authentication, and Prometheus metrics.">
-  <meta property="og:title" content="go-http-cache-server — Remote build cache server for Gradle">
-  <meta property="og:description" content="Cut build times with a dedicated, production-ready Gradle remote cache. Single binary, S3-backed or hybrid local+S3 with TTL eviction, Prometheus metrics, Helm chart included.">
+  <title>go-http-cache-server — Remote build cache server for Gradle and ccache</title>
+  <meta name="description" content="A production-ready remote build cache server for Gradle and ccache. Written in Go. Supports local filesystem, S3-compatible storage, hybrid local+S3 tiered caching with TTL eviction, HTTP Basic authentication, and Prometheus metrics.">
+  <meta property="og:title" content="go-http-cache-server — Remote build cache server for Gradle and ccache">
+  <meta property="og:description" content="Cut build times with a dedicated, production-ready remote cache for Gradle and ccache. Single binary, S3-backed or hybrid local+S3 with TTL eviction, Prometheus metrics, Helm chart included.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://akrumov.github.io/go-http-cache-server/logo.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="go-http-cache-server — Remote build cache server for Gradle">
-  <meta name="twitter:description" content="Cut build times with a dedicated, production-ready Gradle remote cache.">
+  <meta name="twitter:title" content="go-http-cache-server — Remote build cache server for Gradle and ccache">
+  <meta name="twitter:description" content="Cut build times with a dedicated, production-ready remote cache for Gradle and ccache.">
   <meta name="twitter:image" content="https://akrumov.github.io/go-http-cache-server/logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1307,7 +1307,7 @@
   <div class="nav-inner">
     <a href="#" class="logo">
       <img src="logo.png" alt="go-http-cache-server logo">
-      <span>Gradle Cache Server</span>
+      <span>Build Cache Server</span>
     </a>
     <ul class="nav-links">
       <li><a href="#api">API</a></li>
@@ -1337,7 +1337,7 @@
       <div class="eyebrow">Production-ready remote cache</div>
       <h1>Cut build times with a dedicated cache server.</h1>
       <p>
-        A focused, high-performance remote build cache for Gradle. Implements the standard HTTP build cache protocol with pluggable storage, optional Basic authentication, built-in observability, and zero external dependencies beyond your chosen backend. Includes a hybrid local+S3 mode with configurable local-cache TTL eviction.
+        A focused, high-performance remote build cache for Gradle and ccache. Implements the standard HTTP build cache protocol with pluggable storage, optional Basic authentication, built-in observability, and zero external dependencies beyond your chosen backend. Includes a hybrid local+S3 mode with configurable local-cache TTL eviction.
       </p>
       <div class="hero-stats">
         <div class="stat">
@@ -1399,8 +1399,8 @@
         <div class="d-box-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </div>
-        <h4>Gradle Client</h4>
-        <p>HEAD to check, GET to fetch, PUT to store. Per-project cache isolation via path prefixes.</p>
+        <h4>Build Client</h4>
+        <p>Gradle or ccache: HEAD to check, GET to fetch, PUT to store. Per-project cache isolation via path prefixes.</p>
         <div class="d-tag">HTTP/1.1</div>
       </div>
       <div class="d-arrow">
@@ -1436,7 +1436,7 @@
     <div class="section-header reveal">
       <div class="section-label">API</div>
       <h2>Three endpoints. Nothing more.</h2>
-      <p>The server implements the standard Gradle HTTP build cache contract. Each cache entry is addressed by a <code>cacheID</code> and an <code>entryKey</code>, forming the path <code>/cache/{cacheID}/{entryKey}</code>.</p>
+      <p>The server implements the standard HTTP build cache protocol used by Gradle and ccache. Each cache entry is addressed by a <code>cacheID</code> and an <code>entryKey</code>, forming the path <code>/cache/{cacheID}/{entryKey}</code>.</p>
     </div>
 
     <div class="grid-2">
@@ -1702,6 +1702,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         Gradle Client
       </button>
+      <button class="tab" data-tab="ccache">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        ccache Client
+      </button>
     </div>
 
     <div class="tab-panel active" id="panel-run">
@@ -1854,6 +1858,21 @@ org.gradle.caching=true</code></pre>
       </div>
     </div>
 
+    <div class="tab-panel" id="panel-ccache">
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">ini</span><span>ccache.conf</span></div>
+        <button class="copy-btn" data-copy>Copy</button>
+        <pre><code class="language-ini"># ccache.conf
+remote_storage = http|url=http://localhost:8080/cache/ccache
+
+# With HTTP Basic authentication:
+# remote_storage = http|url=http://localhost:8080/cache/ccache|credentials=gradle:change-me
+
+# Or set via environment variable:
+# export CCACHE_REMOTE_STORAGE="http|url=http://localhost:8080/cache/ccache"</code></pre>
+      </div>
+    </div>
+
     <div class="grid-3" style="margin-top: 56px;">
       <div class="card reveal reveal-delay-1">
         <h3>
@@ -1933,7 +1952,7 @@ org.gradle.caching=true</code></pre>
     </div>
   </div>
   <div style="text-align: center; border-top: 1px solid var(--border); padding-top: 24px;">
-    <p style="font-size: 0.82rem; color: var(--text-tertiary);">Built with Go &middot; Designed for Gradle</p>
+    <p style="font-size: 0.82rem; color: var(--text-tertiary);">Built with Go &middot; Designed for Gradle and ccache</p>
   </div>
 </footer>
 

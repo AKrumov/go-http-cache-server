@@ -1,10 +1,10 @@
-# Gradle Remote Build Cache Server
+# Remote Build Cache Server for Gradle and ccache
 
 [![CI](https://github.com/AKrumov/go-http-cache-server/actions/workflows/ci.yml/badge.svg)](https://github.com/AKrumov/go-http-cache-server/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/AKrumov/go-http-cache-server)](https://goreportcard.com/report/github.com/AKrumov/go-http-cache-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports local filesystem, S3-compatible storage (AWS S3, MinIO, etc.), and a hybrid mode that caches locally while backing everything with S3. Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
+A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) and [ccache](https://ccache.dev/) written in Go. Supports local filesystem, S3-compatible storage (AWS S3, MinIO, etc.), and a hybrid mode that caches locally while backing everything with S3. Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
 
 ## Features
 
@@ -263,6 +263,26 @@ Enable caching in `gradle.properties`:
 org.gradle.caching=true
 ```
 
+## ccache Client Setup
+
+Add to your `ccache.conf`:
+
+```ini
+remote_storage = http|url=http://localhost:8080/cache/ccache
+```
+
+With HTTP Basic authentication:
+
+```ini
+remote_storage = http|url=http://localhost:8080/cache/ccache|credentials=gradle:change-me
+```
+
+Or set via environment variable:
+
+```bash
+export CCACHE_REMOTE_STORAGE="http|url=http://localhost:8080/cache/ccache"
+```
+
 ### Tuning S3 Upload Concurrency
 
 The S3 backend uses the AWS SDK transfer manager to upload objects. By default the SDK uses a concurrency of **5** parallel part workers. You can override this with the `-s3-concurrency` flag (or `S3_CONCURRENCY` environment variable).
@@ -348,7 +368,7 @@ make docker
 
 ```
 ┌─────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│   Gradle    │────▶│  Cache Server (Go)   │────▶│  Local FS / S3  │
+│   Build     │────▶│  Cache Server (Go)   │────▶│  Local FS / S3  │
 │   Client    │     │  - HTTP handlers     │     │  - Storage      │
 │             │◀────│  - Prometheus metrics│◀────│  - Backend      │
 └─────────────┘     └──────────────────────┘     └─────────────────┘
