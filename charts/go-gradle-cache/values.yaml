@@ -44,6 +44,8 @@ config:
   s3Endpoint: ""
   s3Concurrency: 0
   maxUploadSize: ""
+  localTTL: ""
+  localCleanupInterval: ""
 
 secret:
   create: true
@@ -91,6 +93,10 @@ persistence:
   accessModes:
     - ReadWriteOnce
   size: 10Gi
+  # Mount options for the cache volume. strictatime is required for accurate
+  # local-cache TTL eviction when using local or hybrid storage.
+  mountOptions:
+    - strictatime
 
 autoscaling:
   enabled: true

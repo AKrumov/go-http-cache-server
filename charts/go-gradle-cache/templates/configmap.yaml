@@ -17,3 +17,9 @@ data:
   {{- if .Values.config.maxUploadSize }}
   MAX_UPLOAD_SIZE: {{ .Values.config.maxUploadSize | quote }}
   {{- end }}
+  {{- if .Values.config.localTTL }}
+  LOCAL_TTL: {{ .Values.config.localTTL | quote }}
+  {{- end }}
+  {{- if .Values.config.localCleanupInterval }}
+  LOCAL_CLEANUP_INTERVAL: {{ .Values.config.localCleanupInterval | quote }}
+  {{- end }}

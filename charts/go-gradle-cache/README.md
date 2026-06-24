@@ -20,14 +20,17 @@ Common values:
 | `image.repository` | Container image repository | `ghcr.io/akrumov/go-gradle-cache` |
 | `image.tag` | Container image tag | `latest` |
 | `replicaCount` | Replica count when autoscaling is disabled | `2` |
-| `config.storageType` | Storage backend, `local` or `s3` | `s3` |
+| `config.storageType` | Storage backend: `local`, `s3`, or `hybrid` | `s3` |
 | `config.s3Bucket` | S3 bucket for cache objects | `my-gradle-cache` |
 | `config.s3Region` | S3 region | `us-east-1` |
 | `config.s3Concurrency` | S3 upload concurrency (`0` = SDK default of 5) | `0` |
+| `config.localTTL` | Local cache TTL, e.g. `7d` (required for hybrid/local TTL) | `""` |
+| `config.localCleanupInterval` | Interval between cleanups, e.g. `24h` | `""` |
 | `secret.data.AUTH_USERNAME` | HTTP Basic authentication username | `""` |
 | `secret.data.AUTH_PASSWORD` | HTTP Basic authentication password | `""` |
 | `autoscaling.enabled` | Enable HorizontalPodAutoscaler | `true` |
 | `persistence.enabled` | Enable PVC for local storage | `false` |
+| `persistence.mountOptions` | Mount options for the cache volume; include `strictatime` for accurate TTL | `["strictatime"]` |
 | `serviceAccount.annotations` | Service account annotations, including EKS IRSA | `{}` |
 | `securityContext.runAsUser` | Numeric container user ID | `1000` |
 
