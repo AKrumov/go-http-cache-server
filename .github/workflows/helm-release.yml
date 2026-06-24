@@ -26,10 +26,10 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Lint chart
-        run: helm lint charts/go-gradle-cache
+        run: helm lint charts/go-http-cache-server
 
       - name: Package chart
-        run: helm package charts/go-gradle-cache --destination .
+        run: helm package charts/go-http-cache-server --destination .
 
       - name: Log in to GitHub Container Registry
         env:
@@ -39,4 +39,4 @@ jobs:
       - name: Push chart to GHCR (OCI)
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm push go-gradle-cache-*.tgz "oci://ghcr.io/$OWNER"
+          helm push go-http-cache-server-*.tgz "oci://ghcr.io/$OWNER"

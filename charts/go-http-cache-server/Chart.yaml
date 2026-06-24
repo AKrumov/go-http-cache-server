@@ -1,11 +1,11 @@
 apiVersion: v2
-name: go-gradle-cache
+name: go-http-cache-server
 description: A Helm chart for the Go Gradle remote build cache server
 type: application
 version: 0.1.5
 appVersion: "latest"
-home: https://github.com/AKrumov/go-gradle-cache
-icon: https://raw.githubusercontent.com/AKrumov/go-gradle-cache/main/docs/logo.png
+home: https://github.com/AKrumov/go-http-cache-server
+icon: https://raw.githubusercontent.com/AKrumov/go-http-cache-server/main/docs/logo.png
 keywords:
   - gradle
   - build-cache
@@ -14,7 +14,7 @@ keywords:
   - prometheus
   - kubernetes
 sources:
-  - https://github.com/AKrumov/go-gradle-cache
+  - https://github.com/AKrumov/go-http-cache-server
 maintainers:
   - name: AKrumov
     url: https://github.com/AKrumov
@@ -23,11 +23,11 @@ annotations:
   artifacthub.io/license: MIT
   artifacthub.io/links: |
     - name: source
-      url: https://github.com/AKrumov/go-gradle-cache
+      url: https://github.com/AKrumov/go-http-cache-server
     - name: support
-      url: https://github.com/AKrumov/go-gradle-cache/issues
+      url: https://github.com/AKrumov/go-http-cache-server/issues
   artifacthub.io/images: |
-    - name: go-gradle-cache
-      image: ghcr.io/akrumov/go-gradle-cache:latest
+    - name: go-http-cache-server
+      image: ghcr.io/akrumov/go-http-cache-server:latest
       platforms:
         - linux/amd64

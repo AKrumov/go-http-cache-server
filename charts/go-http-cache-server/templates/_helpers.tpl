@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "go-gradle-cache.name" -}}
+{{- define "go-http-cache-server.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "go-gradle-cache.fullname" -}}
+{{- define "go-http-cache-server.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,33 +24,33 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "go-gradle-cache.chart" -}}
+{{- define "go-http-cache-server.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels.
 */}}
-{{- define "go-gradle-cache.labels" -}}
-helm.sh/chart: {{ include "go-gradle-cache.chart" . }}
-{{ include "go-gradle-cache.selectorLabels" . }}
+{{- define "go-http-cache-server.labels" -}}
+helm.sh/chart: {{ include "go-http-cache-server.chart" . }}
+{{ include "go-http-cache-server.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
 Selector labels.
 */}}
-{{- define "go-gradle-cache.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "go-gradle-cache.name" . }}
+{{- define "go-http-cache-server.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "go-http-cache-server.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the service account name.
 */}}
-{{- define "go-gradle-cache.serviceAccountName" -}}
+{{- define "go-http-cache-server.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "go-gradle-cache.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "go-http-cache-server.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
@@ -59,6 +59,6 @@ Create the service account name.
 {{/*
 Create the secret name.
 */}}
-{{- define "go-gradle-cache.secretName" -}}
-{{- default (printf "%s-secrets" (include "go-gradle-cache.fullname" .)) .Values.secret.name }}
+{{- define "go-http-cache-server.secretName" -}}
+{{- default (printf "%s-secrets" (include "go-http-cache-server.fullname" .)) .Values.secret.name }}
 {{- end }}

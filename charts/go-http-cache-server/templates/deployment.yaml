@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "go-gradle-cache.fullname" . }}
+  name: {{ include "go-http-cache-server.fullname" . }}
   labels:
-    {{- include "go-gradle-cache.labels" . | nindent 4 }}
+    {{- include "go-http-cache-server.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -15,7 +15,7 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      {{- include "go-gradle-cache.selectorLabels" . | nindent 6 }}
+      {{- include "go-http-cache-server.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -23,7 +23,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "go-gradle-cache.selectorLabels" . | nindent 8 }}
+        {{- include "go-http-cache-server.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -32,11 +32,11 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "go-gradle-cache.serviceAccountName" . }}
+      serviceAccountName: {{ include "go-http-cache-server.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ include "go-gradle-cache.name" . }}
+        - name: {{ include "go-http-cache-server.name" . }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -47,10 +47,10 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: {{ include "go-gradle-cache.fullname" . }}-config
+                name: {{ include "go-http-cache-server.fullname" . }}-config
             {{- if or .Values.secret.create .Values.secret.name }}
             - secretRef:
-                name: {{ include "go-gradle-cache.secretName" . }}
+                name: {{ include "go-http-cache-server.secretName" . }}
                 optional: true
             {{- end }}
           {{- with .Values.args }}
@@ -80,7 +80,7 @@ spec:
             claimName: {{ .Values.persistence.existingClaim }}
           {{- else }}
           persistentVolumeClaim:
-            claimName: {{ include "go-gradle-cache.fullname" . }}-cache-data
+            claimName: {{ include "go-http-cache-server.fullname" . }}-cache-data
           {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}

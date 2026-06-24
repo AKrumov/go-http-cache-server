@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"go_gradle_cache/metrics"
+	"go_http_cache_server/metrics"
 )
 
 func (cs *CacheServer) handleCache(w http.ResponseWriter, r *http.Request) {

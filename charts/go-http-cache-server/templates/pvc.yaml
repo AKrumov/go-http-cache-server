@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "go-gradle-cache.fullname" . }}-cache-data
+  name: {{ include "go-http-cache-server.fullname" . }}-cache-data
   labels:
-    {{- include "go-gradle-cache.labels" . | nindent 4 }}
+    {{- include "go-http-cache-server.labels" . | nindent 4 }}
 spec:
   accessModes:
     {{- toYaml .Values.persistence.accessModes | nindent 4 }}

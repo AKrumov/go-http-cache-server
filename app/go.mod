@@ -1,4 +1,4 @@
-module go_gradle_cache
+module go_http_cache_server
 
 go 1.26.2
 

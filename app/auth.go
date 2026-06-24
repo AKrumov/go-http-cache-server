@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-const basicAuthRealm = `Basic realm="go-gradle-cache"`
+const basicAuthRealm = `Basic realm="go-http-cache-server"`
 
 type authConfig struct {
 	enabled  bool

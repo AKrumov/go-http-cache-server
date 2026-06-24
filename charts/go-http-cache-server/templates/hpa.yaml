@@ -2,14 +2,14 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "go-gradle-cache.fullname" . }}
+  name: {{ include "go-http-cache-server.fullname" . }}
   labels:
-    {{- include "go-gradle-cache.labels" . | nindent 4 }}
+    {{- include "go-http-cache-server.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "go-gradle-cache.fullname" . }}
+    name: {{ include "go-http-cache-server.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

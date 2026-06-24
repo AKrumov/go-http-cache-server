@@ -10,7 +10,7 @@ RUN go mod download
 
 # Copy source and build static binary
 COPY app/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /go-gradle-cache .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /go-http-cache-server .
 
 # Final stage
 FROM alpine:3.20
@@ -26,10 +26,10 @@ RUN mkdir -p /app/cache-data && \
     chown -R 1000:1000 /app
 
 # Copy binary from builder
-COPY --from=builder /go-gradle-cache /app/go-gradle-cache
+COPY --from=builder /go-http-cache-server /app/go-http-cache-server
 
 USER 1000:1000
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/go-gradle-cache"]
+ENTRYPOINT ["/app/go-http-cache-server"]

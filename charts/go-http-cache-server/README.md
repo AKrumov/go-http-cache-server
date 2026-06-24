@@ -1,11 +1,11 @@
-# go-gradle-cache
+# go-http-cache-server
 
-Helm chart for deploying `go-gradle-cache`, a lightweight Gradle remote build cache server written in Go.
+Helm chart for deploying `go-http-cache-server`, a lightweight Gradle remote build cache server written in Go.
 
 ## Install
 
 ```bash
-helm install go-gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
+helm install go-http-cache-server oci://ghcr.io/akrumov/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
   --version 0.1.0
@@ -17,7 +17,7 @@ Common values:
 
 | Value | Description | Default |
 | --- | --- | --- |
-| `image.repository` | Container image repository | `ghcr.io/akrumov/go-gradle-cache` |
+| `image.repository` | Container image repository | `ghcr.io/akrumov/go-http-cache-server` |
 | `image.tag` | Container image tag | `latest` |
 | `replicaCount` | Replica count when autoscaling is disabled | `2` |
 | `config.storageType` | Storage backend: `local`, `s3`, or `hybrid` | `s3` |
@@ -39,7 +39,7 @@ Set both `secret.data.AUTH_USERNAME` and `secret.data.AUTH_PASSWORD` to require 
 ## EKS IRSA
 
 ```bash
-helm upgrade --install go-gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
+helm upgrade --install go-http-cache-server oci://ghcr.io/akrumov/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
   --version 0.1.0 \

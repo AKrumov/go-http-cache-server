@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: akrumovbg/go-gradle-cache
+  IMAGE_NAME: akrumovbg/go-http-cache-server
   VERSION_PREFIX: "0.1"
 
 jobs:

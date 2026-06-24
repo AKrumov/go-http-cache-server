@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"go_gradle_cache/metrics"
-	"go_gradle_cache/storage"
+	"go_http_cache_server/metrics"
+	"go_http_cache_server/storage"
 )
 
 var errIncompleteAuthConfig = errors.New("both auth username and auth password are required when HTTP authentication is enabled")
@@ -43,7 +43,7 @@ func parseDurationWithDays(s string) (time.Duration, error) {
 }
 
 func run(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("go-gradle-cache", flag.ContinueOnError)
+	fs := flag.NewFlagSet("go-http-cache-server", flag.ContinueOnError)
 
 	var (
 		showVersion bool

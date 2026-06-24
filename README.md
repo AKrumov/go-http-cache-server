@@ -1,7 +1,7 @@
 # Gradle Remote Build Cache Server
 
-[![CI](https://github.com/AKrumov/go-gradle-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/AKrumov/go-gradle-cache/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/AKrumov/go-gradle-cache)](https://goreportcard.com/report/github.com/AKrumov/go-gradle-cache)
+[![CI](https://github.com/AKrumov/go-http-cache-server/actions/workflows/ci.yml/badge.svg)](https://github.com/AKrumov/go-http-cache-server/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/AKrumov/go-http-cache-server)](https://goreportcard.com/report/github.com/AKrumov/go-http-cache-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) written in Go. Supports local filesystem, S3-compatible storage (AWS S3, MinIO, etc.), and a hybrid mode that caches locally while backing everything with S3. Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
@@ -82,7 +82,7 @@ Every option can be set via **command-line flag** or **environment variable**. F
 
 **Via flags:**
 ```bash
-./go-gradle-cache \
+./go-http-cache-server \
   -listen=:8080 \
   -storage=s3 \
   -s3-bucket=my-gradle-cache \
@@ -99,12 +99,12 @@ export MAX_UPLOAD_SIZE=10737418240
 export AWS_ACCESS_KEY_ID=AKIA...
 export AWS_SECRET_ACCESS_KEY=...
 
-./go-gradle-cache
+./go-http-cache-server
 ```
 
 **With HTTP Basic authentication:**
 ```bash
-./go-gradle-cache \
+./go-http-cache-server \
   -storage=local \
   -dir=./cache-data \
   -auth-username=gradle \
@@ -118,7 +118,7 @@ export S3_BUCKET=my-gradle-cache
 export S3_REGION=us-east-1
 
 # Uses the env vars above, but overrides the bucket
-./go-gradle-cache -s3-bucket=another-bucket
+./go-http-cache-server -s3-bucket=another-bucket
 ```
 
 ### Local Cache TTL / Eviction
@@ -165,12 +165,12 @@ HTTP Basic authentication is disabled by default. Set both `AUTH_USERNAME` and `
 ## Docker
 
 ```bash
-docker build -t go-gradle-cache .
+docker build -t go-http-cache-server .
 
 # Local storage
 docker run -p 8080:8080 \
   -v $(pwd)/cache-data:/app/cache-data \
-  go-gradle-cache \
+  go-http-cache-server \
   -storage=local -dir=/app/cache-data
 
 # S3 storage
@@ -180,7 +180,7 @@ docker run -p 8080:8080 \
   -e STORAGE_TYPE=s3 \
   -e S3_BUCKET=my-gradle-cache \
   -e S3_REGION=us-east-1 \
-  go-gradle-cache
+  go-http-cache-server
 
 # Hybrid storage
 docker run -p 8080:8080 \
@@ -191,7 +191,7 @@ docker run -p 8080:8080 \
   -e LOCAL_DIR=/app/cache-data \
   -e S3_BUCKET=my-gradle-cache \
   -e S3_REGION=us-east-1 \
-  go-gradle-cache
+  go-http-cache-server
 ```
 
 ## Kubernetes / EKS
@@ -199,10 +199,10 @@ docker run -p 8080:8080 \
 Install the included Helm chart:
 
 ```bash
-helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
+helm upgrade --install go-http-cache-server ./charts/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=ghcr.io/akrumov/go-gradle-cache \
+  --set image.repository=ghcr.io/akrumov/go-http-cache-server \
   --set config.s3Bucket=my-gradle-cache \
   --set config.s3Region=us-east-1
 ```
@@ -210,7 +210,7 @@ helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
 After chart releases are published, install directly from the OCI registry:
 
 ```bash
-helm upgrade --install go-gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
+helm upgrade --install go-http-cache-server oci://ghcr.io/akrumov/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
   --version 0.1.0
@@ -219,7 +219,7 @@ helm upgrade --install go-gradle-cache oci://ghcr.io/akrumov/go-gradle-cache \
 The chart is also discoverable on [Artifact Hub](https://artifacthub.io). To add it there, register the OCI repository:
 
 - Kind: `Helm charts`
-- Name: `go-gradle-cache`
+- Name: `go-http-cache-server`
 - URL: `oci://ghcr.io/akrumov`
 
 For verified publisher status, claim the repository on Artifact Hub and add your repository ID as the `ARTIFACTHUB_REPOSITORY_ID` GitHub Actions secret.
@@ -227,10 +227,10 @@ For verified publisher status, claim the repository on Artifact Hub and add your
 For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html):
 
 ```bash
-helm upgrade --install go-gradle-cache ./charts/go-gradle-cache \
+helm upgrade --install go-http-cache-server ./charts/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=ghcr.io/akrumov/go-gradle-cache \
+  --set image.repository=ghcr.io/akrumov/go-http-cache-server \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<ACCOUNT_ID>:role/GradleCacheS3Role \
   --set secret.create=false
 ```
