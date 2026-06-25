@@ -111,7 +111,7 @@ func (cs *CacheServer) handlePut(w http.ResponseWriter, r *http.Request, storage
 	metrics.CacheEntryStored(cacheID)
 	metrics.CacheStoredBytes(cacheID, r.ContentLength)
 
-	w.Header().Set("Content-Length", fmt.Sprint(r.ContentLength))
+	w.Header().Set("Content-Length", "0")
 	w.WriteHeader(http.StatusCreated)
 }
 
