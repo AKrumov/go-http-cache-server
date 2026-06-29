@@ -5,12 +5,24 @@ metadata:
   labels:
     {{- include "go-http-cache-server.labels" . | nindent 4 }}
 data:
+  {{- if .Values.config.storageType }}
   STORAGE_TYPE: {{ .Values.config.storageType | quote }}
+  {{- end }}
+  {{- if .Values.config.localDir }}
   LOCAL_DIR: {{ .Values.config.localDir | quote }}
+  {{- end }}
+  {{- if .Values.config.s3Bucket }}
   S3_BUCKET: {{ .Values.config.s3Bucket | quote }}
+  {{- end }}
+  {{- if .Values.config.s3Prefix }}
   S3_PREFIX: {{ .Values.config.s3Prefix | quote }}
+  {{- end }}
+  {{- if .Values.config.s3Region }}
   S3_REGION: {{ .Values.config.s3Region | quote }}
+  {{- end }}
+  {{- if .Values.config.s3Endpoint }}
   S3_ENDPOINT: {{ .Values.config.s3Endpoint | quote }}
+  {{- end }}
   {{- if .Values.config.s3Concurrency }}
   S3_CONCURRENCY: {{ .Values.config.s3Concurrency | quote }}
   {{- end }}

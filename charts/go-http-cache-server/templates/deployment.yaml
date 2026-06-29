@@ -71,10 +71,6 @@ spec:
       {{- if .Values.persistence.enabled }}
       volumes:
         - name: cache-data
-          {{- with .Values.persistence.mountOptions }}
-          mountOptions:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           {{- if .Values.persistence.existingClaim }}
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim }}

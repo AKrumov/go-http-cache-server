@@ -3,8 +3,21 @@ package main
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 )
+
+var cacheIDRegexp = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+// safeCacheID returns cacheID if it is safe to use as a Prometheus label value,
+// otherwise it returns "invalid". This prevents cardinality explosions from
+// arbitrary or malicious URL path segments.
+func safeCacheID(cacheID string) string {
+	if cacheIDRegexp.MatchString(cacheID) {
+		return cacheID
+	}
+	return "invalid"
+}
 
 func parseCachePath(urlPath string) (cacheID string, entryKey string, err error) {
 	const prefix = "/cache/"

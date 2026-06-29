@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -51,16 +50,29 @@ func (h *Hybrid) Get(ctx context.Context, key string) (rc io.ReadCloser, size in
 	}
 	defer s3RC.Close()
 
-	data, err := io.ReadAll(s3RC)
-	if err != nil {
-		return nil, 0, time.Time{}, false, fmt.Errorf("failed to read object from S3: %w", err)
-	}
-
-	if err := h.local.Put(ctx, key, bytes.NewReader(data), s3Size); err != nil {
+	// Stream the S3 object directly to local storage instead of buffering it
+	// in memory. This keeps memory usage flat regardless of object size.
+	if err := h.local.Put(ctx, key, s3RC, s3Size); err != nil {
 		return nil, 0, time.Time{}, false, fmt.Errorf("failed to backfill cache entry locally: %w", err)
 	}
 
 	return h.local.Get(ctx, key)
+}
+
+// Delete removes the object from both local storage and S3.
+// Errors from either backend are reported, with local errors taking precedence.
+func (h *Hybrid) Delete(ctx context.Context, key string) error {
+	var localErr, s3Err error
+	if err := h.local.Delete(ctx, key); err != nil {
+		localErr = fmt.Errorf("failed to delete local cache entry: %w", err)
+	}
+	if err := h.s3.Delete(ctx, key); err != nil {
+		s3Err = fmt.Errorf("failed to delete S3 cache entry: %w", err)
+	}
+	if localErr != nil {
+		return localErr
+	}
+	return s3Err
 }
 
 // Put stores an object in both local storage and S3.

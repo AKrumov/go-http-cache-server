@@ -27,8 +27,10 @@ func (cs *CacheServer) handleCache(w http.ResponseWriter, r *http.Request) {
 		cs.handleGet(w, r, storageKey, cacheID)
 	case http.MethodPut:
 		cs.handlePut(w, r, storageKey, cacheID, cs.maxUpload)
+	case http.MethodDelete:
+		cs.handleDelete(w, r, storageKey, cacheID)
 	default:
-		w.Header().Set("Allow", "GET, HEAD, PUT")
+		w.Header().Set("Allow", "GET, HEAD, PUT, DELETE")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
@@ -41,12 +43,12 @@ func (cs *CacheServer) handleHead(w http.ResponseWriter, r *http.Request, storag
 		return
 	}
 	if !exists {
-		metrics.CacheMiss(cacheID)
+		metrics.CacheMiss(safeCacheID(cacheID))
 		http.NotFound(w, r)
 		return
 	}
 
-	metrics.CacheHit(cacheID)
+	metrics.CacheHit(safeCacheID(cacheID))
 	w.Header().Set("Content-Length", fmt.Sprint(size))
 	w.WriteHeader(http.StatusOK)
 }
@@ -59,14 +61,15 @@ func (cs *CacheServer) handleGet(w http.ResponseWriter, r *http.Request, storage
 		return
 	}
 	if !exists {
-		metrics.CacheMiss(cacheID)
+		metrics.CacheMiss(safeCacheID(cacheID))
 		http.NotFound(w, r)
 		return
 	}
 	defer file.Close()
 
-	metrics.CacheHit(cacheID)
-	metrics.CacheServedBytes(cacheID, size)
+	safeID := safeCacheID(cacheID)
+	metrics.CacheHit(safeID)
+	metrics.CacheServedBytes(safeID, size)
 
 	// Use ServeContent for seekable streams (local files) to support range requests.
 	// For non-seekable streams (S3), stream directly without buffering in memory.
@@ -86,6 +89,10 @@ func (cs *CacheServer) handleGet(w http.ResponseWriter, r *http.Request, storage
 }
 
 func (cs *CacheServer) handlePut(w http.ResponseWriter, r *http.Request, storageKey string, cacheID string, maxSize int64) {
+	if r.ContentLength < 0 {
+		http.Error(w, "Content-Length required", http.StatusLengthRequired)
+		return
+	}
 	if maxSize > 0 && r.ContentLength > maxSize {
 		http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
 		return
@@ -108,11 +115,23 @@ func (cs *CacheServer) handlePut(w http.ResponseWriter, r *http.Request, storage
 		return
 	}
 
-	metrics.CacheEntryStored(cacheID)
-	metrics.CacheStoredBytes(cacheID, r.ContentLength)
+	safeID := safeCacheID(cacheID)
+	metrics.CacheEntryStored(safeID)
+	metrics.CacheStoredBytes(safeID, r.ContentLength)
 
 	w.Header().Set("Content-Length", "0")
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (cs *CacheServer) handleDelete(w http.ResponseWriter, r *http.Request, storageKey string, cacheID string) {
+	if err := cs.backend.Delete(r.Context(), storageKey); err != nil {
+		log.Printf("error deleting cache entry %s: %v", storageKey, err)
+		http.Error(w, "failed to delete cache entry", http.StatusInternalServerError)
+		return
+	}
+
+	metrics.CacheEntryDeleted(safeCacheID(cacheID))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (cs *CacheServer) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +156,7 @@ func (cs *CacheServer) instrument(handlerName string, next http.HandlerFunc) htt
 
 		cacheID := ""
 		if id, ok := cacheIDFromPath(r.URL.Path); ok {
-			cacheID = id
+			cacheID = safeCacheID(id)
 		}
 
 		statusLabel := fmt.Sprint(sw.status)

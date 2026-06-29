@@ -135,6 +135,18 @@ func (s *S3) Get(ctx context.Context, key string) (rc io.ReadCloser, size int64,
 	return out.Body, sz, mt, true, nil
 }
 
+// Delete implements Backend.
+func (s *S3) Delete(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(s.key(key)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete object from S3: %w", err)
+	}
+	return nil
+}
+
 // Put implements Backend.
 func (s *S3) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	input := &s3.PutObjectInput{

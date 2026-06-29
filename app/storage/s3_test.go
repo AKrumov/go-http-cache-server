@@ -55,6 +55,13 @@ func mockS3Server() *httptest.Server {
 			}
 			w.WriteHeader(http.StatusOK)
 
+		case http.MethodDelete:
+			if strings.Contains(path, "/error/") {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -297,6 +304,39 @@ func TestIsNotFound(t *testing.T) {
 func TestIsNotFoundPlainError(t *testing.T) {
 	if isNotFound(errors.New("plain error")) {
 		t.Fatal("expected false for plain error")
+	}
+}
+
+func TestS3Delete(t *testing.T) {
+	srv := mockS3Server()
+	defer srv.Close()
+
+	be, err := NewS3(context.Background(), S3Options{
+		Bucket:      "test-bucket",
+		Region:      "us-east-1",
+		Endpoint:    srv.URL,
+		Credentials: credentials.NewStaticCredentialsProvider("TEST", "TEST", ""),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"success", "found", false},
+		{"error", "error/500", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := be.Delete(context.Background(), tt.key)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Delete(%q) error = %v, wantErr %v", tt.key, err, tt.wantErr)
+			}
+		})
 	}
 }
 

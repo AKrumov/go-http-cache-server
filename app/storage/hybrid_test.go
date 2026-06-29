@@ -11,9 +11,10 @@ import (
 )
 
 type mockBackend struct {
-	headFunc func(ctx context.Context, key string) (int64, bool, error)
-	getFunc  func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error)
-	putFunc  func(ctx context.Context, key string, r io.Reader, size int64) error
+	headFunc   func(ctx context.Context, key string) (int64, bool, error)
+	getFunc    func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error)
+	putFunc    func(ctx context.Context, key string, r io.Reader, size int64) error
+	deleteFunc func(ctx context.Context, key string) error
 }
 
 func (m *mockBackend) Head(ctx context.Context, key string) (int64, bool, error) {
@@ -37,6 +38,13 @@ func (m *mockBackend) Put(ctx context.Context, key string, r io.Reader, size int
 	return nil
 }
 
+func (m *mockBackend) Delete(ctx context.Context, key string) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, key)
+	}
+	return nil
+}
+
 func stringReadCloser(s string) io.ReadCloser {
 	return io.NopCloser(bytes.NewReader([]byte(s)))
 }
@@ -44,9 +52,10 @@ func stringReadCloser(s string) io.ReadCloser {
 // spyBackend records which methods were called and with which keys.
 type spyBackend struct {
 	mockBackend
-	headKeys []string
-	getKeys  []string
-	putKeys  []string
+	headKeys   []string
+	getKeys    []string
+	putKeys    []string
+	deleteKeys []string
 }
 
 func (s *spyBackend) Head(ctx context.Context, key string) (int64, bool, error) {
@@ -62,6 +71,11 @@ func (s *spyBackend) Get(ctx context.Context, key string) (io.ReadCloser, int64,
 func (s *spyBackend) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	s.putKeys = append(s.putKeys, key)
 	return s.mockBackend.Put(ctx, key, r, size)
+}
+
+func (s *spyBackend) Delete(ctx context.Context, key string) error {
+	s.deleteKeys = append(s.deleteKeys, key)
+	return s.mockBackend.Delete(ctx, key)
 }
 
 func TestHybridHead(t *testing.T) {
@@ -317,8 +331,8 @@ func TestHybridGetS3ReadError(t *testing.T) {
 				return nil, 0, time.Time{}, false, nil
 			},
 			putFunc: func(ctx context.Context, key string, r io.Reader, size int64) error {
-				t.Fatal("local put should not be called when S3 read fails")
-				return nil
+				_, err := io.ReadAll(r)
+				return err
 			},
 		},
 	}
@@ -487,6 +501,79 @@ func TestHybridPut(t *testing.T) {
 			}
 			if got := len(s3Spy.putKeys) > 0; got != tt.wantS3Put {
 				t.Fatalf("s3 put called = %v, want %v", got, tt.wantS3Put)
+			}
+		})
+	}
+}
+
+func TestHybridDelete(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name            string
+		local           *mockBackend
+		s3              *mockBackend
+		wantErr         error
+		wantLocalDelete bool
+		wantS3Delete    bool
+	}{
+		{
+			name:            "deletes from both backends",
+			local:           &mockBackend{},
+			s3:              &mockBackend{},
+			wantLocalDelete: true,
+			wantS3Delete:    true,
+		},
+		{
+			name: "local error propagated",
+			local: &mockBackend{
+				deleteFunc: func(ctx context.Context, key string) error {
+					return errors.New("local delete error")
+				},
+			},
+			s3:              &mockBackend{},
+			wantErr:         errors.New("local delete error"),
+			wantLocalDelete: true,
+			wantS3Delete:    true,
+		},
+		{
+			name:  "s3 error propagated",
+			local: &mockBackend{},
+			s3: &mockBackend{
+				deleteFunc: func(ctx context.Context, key string) error {
+					return errors.New("s3 delete error")
+				},
+			},
+			wantErr:         errors.New("s3 delete error"),
+			wantLocalDelete: true,
+			wantS3Delete:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			localSpy := &spyBackend{mockBackend: *tt.local}
+			s3Spy := &spyBackend{mockBackend: *tt.s3}
+			h := NewHybrid(localSpy, s3Spy)
+
+			err := h.Delete(ctx, "k")
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("got no error, want containing %v", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr.Error()) {
+					t.Fatalf("got error %v, want containing %v", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if got := len(localSpy.deleteKeys) > 0; got != tt.wantLocalDelete {
+				t.Fatalf("local delete called = %v, want %v", got, tt.wantLocalDelete)
+			}
+			if got := len(s3Spy.deleteKeys) > 0; got != tt.wantS3Delete {
+				t.Fatalf("s3 delete called = %v, want %v", got, tt.wantS3Delete)
 			}
 		})
 	}

@@ -17,4 +17,8 @@ type Backend interface {
 
 	// Put stores an object at the given key.
 	Put(ctx context.Context, key string, r io.Reader, size int64) error
+
+	// Delete removes the object at the given key. It is idempotent: deleting a
+	// non-existent object returns no error.
+	Delete(ctx context.Context, key string) error
 }

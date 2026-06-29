@@ -118,6 +118,18 @@ func (l *Local) Get(ctx context.Context, key string) (rc io.ReadCloser, size int
 	return f, info.Size(), info.ModTime(), true, nil
 }
 
+// Delete implements Backend.
+func (l *Local) Delete(ctx context.Context, key string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	err := l.fs.remove(l.path(key))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete cache entry: %w", err)
+	}
+	return nil
+}
+
 // Put implements Backend.
 func (l *Local) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	filePath := l.path(key)

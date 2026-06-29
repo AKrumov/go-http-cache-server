@@ -18,7 +18,7 @@ Common values:
 | Value | Description | Default |
 | --- | --- | --- |
 | `image.repository` | Container image repository | `ghcr.io/akrumov/go-http-cache-server` |
-| `image.tag` | Container image tag | `latest` |
+| `image.tag` | Container image tag | `""` (defaults to `appVersion`) |
 | `replicaCount` | Replica count when autoscaling is disabled | `2` |
 | `config.storageType` | Storage backend: `local`, `s3`, or `hybrid` | `s3` |
 | `config.s3Bucket` | S3 bucket for cache objects | `my-gradle-cache` |
@@ -30,6 +30,9 @@ Common values:
 | `secret.data.AUTH_PASSWORD` | HTTP Basic authentication password | `""` |
 | `autoscaling.enabled` | Enable HorizontalPodAutoscaler | `true` |
 | `persistence.enabled` | Enable PVC for local storage | `false` |
+| `persistence.size` | PVC storage request for local cache data | `10Gi` |
+| `persistence.storageClass` | Storage class for the PVC | `""` |
+| `persistence.accessModes` | PVC access modes | `["ReadWriteOnce"]` |
 | `persistence.mountOptions` | Mount options for the cache volume; include `strictatime` for accurate TTL | `["strictatime"]` |
 | `serviceAccount.annotations` | Service account annotations, including EKS IRSA | `{}` |
 | `securityContext.runAsUser` | Numeric container user ID | `1000` |

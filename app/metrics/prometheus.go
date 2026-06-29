@@ -40,6 +40,12 @@ var (
 			Help: "Total number of cache entries successfully stored.",
 		}, []string{"cache_id"},
 	)
+	cacheEntriesDeleted = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "gradle_cache_entries_deleted_total",
+			Help: "Total number of cache entries successfully deleted.",
+		}, []string{"cache_id"},
+	)
 	cacheStoredBytes = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "gradle_cache_stored_bytes_total",
@@ -67,6 +73,7 @@ func init() {
 		cacheHitCounter,
 		cacheMissCounter,
 		cacheEntriesStored,
+		cacheEntriesDeleted,
 		cacheStoredBytes,
 		cacheServedBytes,
 		inFlightRequests,
@@ -92,6 +99,10 @@ func CacheMiss(cacheID string) {
 
 func CacheEntryStored(cacheID string) {
 	cacheEntriesStored.WithLabelValues(cacheID).Inc()
+}
+
+func CacheEntryDeleted(cacheID string) {
+	cacheEntriesDeleted.WithLabelValues(cacheID).Inc()
 }
 
 func CacheStoredBytes(cacheID string, bytes int64) {

@@ -376,6 +376,66 @@ func TestLocalRealFS(t *testing.T) {
 	if exists {
 		t.Fatal("expected not found")
 	}
+
+	// Delete
+	if err := l.Delete(ctx, key); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	_, exists, _ = l.Head(ctx, key)
+	if exists {
+		t.Fatal("expected deleted entry to be missing")
+	}
+
+	// Delete missing entry is idempotent.
+	if err := l.Delete(ctx, key); err != nil {
+		t.Fatalf("Delete missing: %v", err)
+	}
+}
+
+func TestLocalDelete(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+		removed := false
+		fs := &mockLocalFS{
+			removeFunc: func(name string) error {
+				removed = true
+				return nil
+			},
+		}
+		l, _ := newLocal("/tmp", fs)
+		if err := l.Delete(context.Background(), "myid/key"); err != nil {
+			t.Fatal(err)
+		}
+		if !removed {
+			t.Fatal("remove was not called")
+		}
+	})
+
+	t.Run("not exists is idempotent", func(t *testing.T) {
+		t.Parallel()
+		fs := &mockLocalFS{
+			removeFunc: func(name string) error {
+				return os.ErrNotExist
+			},
+		}
+		l, _ := newLocal("/tmp", fs)
+		if err := l.Delete(context.Background(), "myid/key"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("remove error", func(t *testing.T) {
+		t.Parallel()
+		fs := &mockLocalFS{
+			removeFunc: func(name string) error {
+				return errors.New("io error")
+			},
+		}
+		l, _ := newLocal("/tmp", fs)
+		if err := l.Delete(context.Background(), "myid/key"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
 }
 
 // errorReader is an io.Reader that always fails.

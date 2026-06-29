@@ -14,9 +14,10 @@ import (
 
 // mockBackend is a test implementation of storage.Backend.
 type mockBackend struct {
-	headFunc func(ctx context.Context, key string) (int64, bool, error)
-	getFunc  func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error)
-	putFunc  func(ctx context.Context, key string, r io.Reader, size int64) error
+	headFunc   func(ctx context.Context, key string) (int64, bool, error)
+	getFunc    func(ctx context.Context, key string) (io.ReadCloser, int64, time.Time, bool, error)
+	putFunc    func(ctx context.Context, key string, r io.Reader, size int64) error
+	deleteFunc func(ctx context.Context, key string) error
 }
 
 func (m *mockBackend) Head(ctx context.Context, key string) (int64, bool, error) {
@@ -36,6 +37,13 @@ func (m *mockBackend) Get(ctx context.Context, key string) (io.ReadCloser, int64
 func (m *mockBackend) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	if m.putFunc != nil {
 		return m.putFunc(ctx, key, r, size)
+	}
+	return nil
+}
+
+func (m *mockBackend) Delete(ctx context.Context, key string) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, key)
 	}
 	return nil
 }
@@ -110,6 +118,28 @@ func TestParseCachePath(t *testing.T) {
 				if id != tt.wantID || key != tt.wantKey {
 					t.Fatalf("parseCachePath(%q) = (%q, %q), want (%q, %q)", tt.path, id, key, tt.wantID, tt.wantKey)
 				}
+			}
+		})
+	}
+}
+
+func TestSafeCacheID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"myid", "myid"},
+		{"my-id_1.0", "my-id_1.0"},
+		{"", "invalid"},
+		{"../../../etc", "invalid"},
+		{"my id", "invalid"},
+		{"my/id", "invalid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := safeCacheID(tt.input); got != tt.want {
+				t.Fatalf("safeCacheID(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -407,6 +437,56 @@ func TestCacheServerHandlePut(t *testing.T) {
 	}
 }
 
+func TestCacheServerHandleDelete(t *testing.T) {
+	tests := []struct {
+		name       string
+		backend    *mockBackend
+		path       string
+		wantStatus int
+	}{
+		{
+			name: "success",
+			backend: &mockBackend{
+				deleteFunc: func(ctx context.Context, key string) error {
+					if key != "myid/foo" {
+						t.Errorf("delete key = %q, want myid/foo", key)
+					}
+					return nil
+				},
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "backend error",
+			backend: &mockBackend{
+				deleteFunc: func(ctx context.Context, key string) error {
+					return errors.New("fail")
+				},
+			},
+			wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name:       "invalid path",
+			backend:    &mockBackend{},
+			path:       "/cache/",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cs := NewCacheServer(tt.backend, 0)
+			path := tt.path
+			if path == "" {
+				path = "/cache/myid/foo"
+			}
+			rr := cacheRequest(cs, http.MethodDelete, path, nil)
+			assertStatus(t, rr, tt.wantStatus)
+		})
+	}
+}
+
 func TestCacheServerInvalidMethod(t *testing.T) {
 	t.Parallel()
 	cs := NewCacheServer(&mockBackend{}, 0)
@@ -415,6 +495,19 @@ func TestCacheServerInvalidMethod(t *testing.T) {
 	cs.handleCache(rr, req)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("code = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestCacheServerHandlePutChunkedRejected(t *testing.T) {
+	t.Parallel()
+	cs := NewCacheServer(&mockBackend{}, 0)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/cache/myid/foo", strings.NewReader("payload"))
+	req.ContentLength = -1
+	req.TransferEncoding = []string{"chunked"}
+	cs.handleCache(rr, req)
+	if rr.Code != http.StatusLengthRequired {
+		t.Fatalf("code = %d, want %d", rr.Code, http.StatusLengthRequired)
 	}
 }
 
