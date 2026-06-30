@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"go_http_cache_server/metrics"
 )
 
 // fileHandle abstracts *os.File for testability.
@@ -58,10 +60,46 @@ func (r realFile) Write(p []byte) (int, error) { return r.File.Write(p) }
 func (r realFile) Close() error                { return r.File.Close() }
 func (r realFile) Stat() (os.FileInfo, error)  { return r.File.Stat() }
 
+// ------------------------------------------------------------------
+// Sharded locks for improved concurrency
+// ------------------------------------------------------------------
+
+const shardCount = 256
+
+func shardIndex(key string) uint32 {
+	// Simple FNV-1a hash for sharding
+	h := uint32(2166136261)
+	for i := 0; i < len(key); i++ {
+		h ^= uint32(key[i])
+		h *= 16777619
+	}
+	return h % shardCount
+}
+
+type shardedLocks struct {
+	locks [shardCount]sync.RWMutex
+}
+
+func (sl *shardedLocks) rLock(key string) {
+	sl.locks[shardIndex(key)].RLock()
+}
+
+func (sl *shardedLocks) rUnlock(key string) {
+	sl.locks[shardIndex(key)].RUnlock()
+}
+
+func (sl *shardedLocks) lock(key string) {
+	sl.locks[shardIndex(key)].Lock()
+}
+
+func (sl *shardedLocks) unlock(key string) {
+	sl.locks[shardIndex(key)].Unlock()
+}
+
 // Local implements Backend using the local filesystem.
 type Local struct {
 	root string
-	mu   sync.RWMutex
+	mu   shardedLocks
 	fs   localFS
 }
 
@@ -83,8 +121,8 @@ func (l *Local) path(key string) string {
 
 // Head implements Backend.
 func (l *Local) Head(ctx context.Context, key string) (size int64, exists bool, err error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.mu.rLock(key)
+	defer l.mu.rUnlock(key)
 
 	info, err := l.fs.stat(l.path(key))
 	if err != nil {
@@ -98,8 +136,8 @@ func (l *Local) Head(ctx context.Context, key string) (size int64, exists bool, 
 
 // Get implements Backend.
 func (l *Local) Get(ctx context.Context, key string) (rc io.ReadCloser, size int64, modTime time.Time, exists bool, err error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.mu.rLock(key)
+	defer l.mu.rUnlock(key)
 
 	f, err := l.fs.open(l.path(key))
 	if err != nil {
@@ -120,8 +158,8 @@ func (l *Local) Get(ctx context.Context, key string) (rc io.ReadCloser, size int
 
 // Delete implements Backend.
 func (l *Local) Delete(ctx context.Context, key string) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mu.lock(key)
+	defer l.mu.unlock(key)
 
 	err := l.fs.remove(l.path(key))
 	if err != nil && !os.IsNotExist(err) {
@@ -144,10 +182,15 @@ func (l *Local) Put(ctx context.Context, key string, r io.Reader, size int64) er
 		return fmt.Errorf("unable to write cache file: %w", err)
 	}
 
-	if _, err := io.Copy(tmpFile, r); err != nil {
+	// Use pooled buffer for reduced GC pressure
+	buf := getBuffer()
+	_, copyErr := io.CopyBuffer(tmpFile, r, *buf)
+	putBuffer(buf)
+
+	if copyErr != nil {
 		tmpFile.Close()
 		l.fs.remove(tmpPath)
-		return fmt.Errorf("failed to store cache entry: %w", err)
+		return fmt.Errorf("failed to store cache entry: %w", copyErr)
 	}
 
 	if err := tmpFile.Close(); err != nil {
@@ -155,8 +198,8 @@ func (l *Local) Put(ctx context.Context, key string, r io.Reader, size int64) er
 		return fmt.Errorf("failed to finalize cache entry: %w", err)
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mu.lock(key)
+	defer l.mu.unlock(key)
 
 	if err := l.fs.rename(tmpPath, filePath); err != nil {
 		l.fs.remove(tmpPath)
@@ -188,7 +231,12 @@ func (l *Local) StartCleanup(ctx context.Context, ttl, interval time.Duration) {
 }
 
 func (l *Local) runCleanup(ttl time.Duration) {
+	metrics.LocalCleanupRun()
 	now := time.Now()
+	var totalEvictedBytes int64
+	var totalEntries int64
+	var totalSize int64
+
 	err := filepath.WalkDir(l.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -197,22 +245,36 @@ func (l *Local) runCleanup(ttl time.Duration) {
 			return nil
 		}
 
+		info, err := d.Info()
+		if err != nil {
+			slog.Warn("error reading file info for cleanup", "path", path, "error", err)
+			return nil
+		}
+		size := info.Size()
+		totalEntries++
+		totalSize += size
+
 		at, err := accessTime(path)
 		if err != nil {
-			log.Printf("error reading access time for %s: %v", path, err)
+			slog.Warn("error reading access time for cleanup", "path", path, "error", err)
 			return nil
 		}
 
 		if now.Sub(at) > ttl {
 			if err := l.fs.remove(path); err != nil {
-				log.Printf("error evicting stale cache entry %s: %v", path, err)
+				slog.Error("error evicting stale cache entry", "path", path, "error", err)
 			} else {
-				log.Printf("evicted stale cache entry %s (last access %s)", path, at.Format(time.RFC3339))
+				slog.Info("evicted stale cache entry", "path", path, "last_access", at.Format(time.RFC3339), "size", size)
+				totalEvictedBytes += size
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		log.Printf("error walking local cache for cleanup: %v", err)
+		slog.Error("error walking local cache for cleanup", "error", err)
 	}
+
+	metrics.LocalCleanupEvicted(float64(totalEvictedBytes))
+	metrics.SetLocalCacheEntries(float64(totalEntries))
+	metrics.SetLocalCacheSize(float64(totalSize))
 }

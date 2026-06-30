@@ -1,0 +1,107 @@
+# Production-ready Helm values for a 2GB RAM pod
+# Save as: my-cache-values.yaml
+# Install: helm install cache charts/go-http-cache-server -f my-cache-values.yaml
+
+replicaCount: 2
+
+resources:
+  requests:
+    memory: 1536Mi          # 1.5GB — enough for normal ops
+    cpu: 500m                # half a core steady state
+  limits:
+    memory: 2048Mi          # 2GB hard cap
+    cpu: 2000m               # burst up to 2 cores
+
+config:
+  # ─── Logging (Phase 3) ───
+  logFormat: "json"         # Structured logs for production
+  logLevel: "info"          # Reduce to "warn" if too noisy
+
+  # ─── Timeouts (Phase 3) ───
+  requestTimeout: "30s"
+  shutdownTimeout: "30s"
+
+  # ─── Storage ───
+  storageType: "hybrid"     # Best for production: local fast + S3 durable
+  localDir: /app/cache-data
+  localTTL: "7d"            # Keep local cache for 7 days
+  localCleanupInterval: "1h"
+
+  # ─── S3 (required for hybrid) ───
+  s3Bucket: "my-gradle-cache"
+  s3Prefix: "gradle-cache"
+  s3Region: "us-east-1"
+  s3Endpoint: ""            # Leave empty for AWS S3
+  s3Concurrency: 4           # 4 concurrent S3 uploads
+  s3RetryMax: 3
+
+  # ─── Upload Limits ───
+  maxUploadSize: "268435456"  # 256 MB max per entry
+
+  # ─── In-Memory LRU Cache (Phase 2) ───
+  # 512MB = ~25% of 2GB RAM. Leave headroom for:
+  #   - Go runtime (~200MB)
+  #   - Async S3 queue buffers (~100MB)
+  #   - OS + spikes (~384MB)
+  memCacheSize: 536870912   # 512 MB in-memory cache
+  memCacheMaxEntry: 1048576 # 1 MB max per in-memory entry (larger → local disk)
+
+  # ─── Rate Limiting (Phase 1) ───
+  # Disabled: expecting high RPS from many CI agents / developers
+  rateLimitPerIP: 0        # 0 = disabled — no per-IP throttling
+  rateLimitGlobal: 0       # 0 = disabled — no global throttling
+
+  # ─── Async S3 Upload (Phase 1) ───
+  asyncS3Upload: true
+  asyncS3QueueSize: 5000    # 5K pending uploads buffer
+  asyncS3Workers: 4         # 4 upload workers (matches s3Concurrency)
+  asyncS3MaxRetry: 3
+
+  # ─── Circuit Breaker (Phase 1) ───
+  circuitBreakerFailures: 5  # Open after 5 consecutive S3 failures
+  circuitBreakerTimeout: "30s" # Cooldown before retrying S3
+
+  # ─── Debug / pprof (Phase 3) ───
+  # Enable only when actively profiling; costs ~10MB + exposed port
+  debugListen: ""            # "" = disabled for production
+
+# ─── TLS (optional but recommended) ───
+tls:
+  enabled: false
+  # existingSecret: "my-cache-tls"
+
+# ─── Persistence ───
+# Enable if you want local cache to survive pod restarts
+persistence:
+  enabled: false
+  storageClass: ""
+  size: 50Gi                # Large enough for 7-day TTL cache
+  accessModes:
+    - ReadWriteOnce
+
+# ─── Autoscaling ───
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# ─── Probes ───
+# Already defaults to /livez and /readyz in values.yaml
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

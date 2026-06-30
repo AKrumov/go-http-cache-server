@@ -5,12 +5,34 @@ metadata:
   labels:
     {{- include "go-http-cache-server.labels" . | nindent 4 }}
 data:
+  # Logging
+  {{- if .Values.config.logFormat }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  {{- end }}
+  {{- if .Values.config.logLevel }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  {{- end }}
+  # Timeouts
+  {{- if .Values.config.requestTimeout }}
+  REQUEST_TIMEOUT: {{ .Values.config.requestTimeout | quote }}
+  {{- end }}
+  {{- if .Values.config.shutdownTimeout }}
+  SHUTDOWN_TIMEOUT: {{ .Values.config.shutdownTimeout | quote }}
+  {{- end }}
+  # Storage
   {{- if .Values.config.storageType }}
   STORAGE_TYPE: {{ .Values.config.storageType | quote }}
   {{- end }}
   {{- if .Values.config.localDir }}
   LOCAL_DIR: {{ .Values.config.localDir | quote }}
   {{- end }}
+  {{- if .Values.config.localTTL }}
+  LOCAL_TTL: {{ .Values.config.localTTL | quote }}
+  {{- end }}
+  {{- if .Values.config.localCleanupInterval }}
+  LOCAL_CLEANUP_INTERVAL: {{ .Values.config.localCleanupInterval | quote }}
+  {{- end }}
+  # S3
   {{- if .Values.config.s3Bucket }}
   S3_BUCKET: {{ .Values.config.s3Bucket | quote }}
   {{- end }}
@@ -26,12 +48,51 @@ data:
   {{- if .Values.config.s3Concurrency }}
   S3_CONCURRENCY: {{ .Values.config.s3Concurrency | quote }}
   {{- end }}
+  {{- if .Values.config.s3RetryMax }}
+  S3_RETRY_MAX: {{ .Values.config.s3RetryMax | quote }}
+  {{- end }}
   {{- if .Values.config.maxUploadSize }}
   MAX_UPLOAD_SIZE: {{ .Values.config.maxUploadSize | quote }}
   {{- end }}
-  {{- if .Values.config.localTTL }}
-  LOCAL_TTL: {{ .Values.config.localTTL | quote }}
+  # Memory cache
+  {{- if .Values.config.memCacheSize }}
+  MEM_CACHE_SIZE: {{ .Values.config.memCacheSize | quote }}
   {{- end }}
-  {{- if .Values.config.localCleanupInterval }}
-  LOCAL_CLEANUP_INTERVAL: {{ .Values.config.localCleanupInterval | quote }}
+  {{- if .Values.config.memCacheMaxEntry }}
+  MEM_CACHE_MAX_ENTRY: {{ .Values.config.memCacheMaxEntry | quote }}
+  {{- end }}
+  # Rate limiting
+  {{- if .Values.config.rateLimitPerIP }}
+  RATE_LIMIT_PER_IP: {{ .Values.config.rateLimitPerIP | quote }}
+  {{- end }}
+  {{- if .Values.config.rateLimitGlobal }}
+  RATE_LIMIT_GLOBAL: {{ .Values.config.rateLimitGlobal | quote }}
+  {{- end }}
+  # Async S3
+  {{- if .Values.config.asyncS3Upload }}
+  ASYNC_S3_UPLOAD: "true"
+  {{- end }}
+  {{- if .Values.config.asyncS3QueueSize }}
+  ASYNC_S3_QUEUE_SIZE: {{ .Values.config.asyncS3QueueSize | quote }}
+  {{- end }}
+  {{- if .Values.config.asyncS3Workers }}
+  ASYNC_S3_WORKERS: {{ .Values.config.asyncS3Workers | quote }}
+  {{- end }}
+  {{- if .Values.config.asyncS3MaxRetry }}
+  ASYNC_S3_MAX_RETRY: {{ .Values.config.asyncS3MaxRetry | quote }}
+  {{- end }}
+  # Circuit breaker
+  {{- if .Values.config.circuitBreakerFailures }}
+  CIRCUIT_BREAKER_FAILURES: {{ .Values.config.circuitBreakerFailures | quote }}
+  {{- end }}
+  {{- if .Values.config.circuitBreakerTimeout }}
+  CIRCUIT_BREAKER_TIMEOUT: {{ .Values.config.circuitBreakerTimeout | quote }}
+  {{- end }}
+  # Debug
+  {{- if .Values.config.debugListen }}
+  DEBUG_LISTEN: {{ .Values.config.debugListen | quote }}
+  {{- end }}
+  {{- if .Values.tls.enabled }}
+  TLS_CERT: "/app/tls/tls.crt"
+  TLS_KEY: "/app/tls/tls.key"
   {{- end }}

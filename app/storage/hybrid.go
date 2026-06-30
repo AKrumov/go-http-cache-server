@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 )
 
@@ -13,16 +14,39 @@ import (
 // If it is missing locally but exists in S3, the object is downloaded to
 // local storage and then served from local.
 //
-// Writes persist the entry to both local storage and S3.
+// Writes persist the entry to both local storage and S3. When async upload
+// is enabled, the S3 upload happens in the background after the local write
+// returns, reducing PUT latency.
 type Hybrid struct {
-	local Backend
-	s3    Backend
+	local       Backend
+	s3          Backend
+	asyncUpload *AsyncUploader
 }
 
-// NewHybrid creates a new hybrid backend that uses local as the fast local
-// cache and s3 as the remote backing store.
-func NewHybrid(local, s3 Backend) *Hybrid {
-	return &Hybrid{local: local, s3: s3}
+// HybridOptions holds configuration for the hybrid backend.
+type HybridOptions struct {
+	AsyncUpload     bool // if true, S3 uploads are done in background
+	AsyncQueueSize  int  // max pending async uploads
+	AsyncMaxRetry   int  // max retries for async uploads
+	AsyncWorkers    int  // number of background upload workers
+}
+
+// NewHybrid creates a new hybrid backend.
+func NewHybrid(local, s3 Backend, opts HybridOptions) *Hybrid {
+	h := &Hybrid{local: local, s3: s3}
+	if opts.AsyncUpload {
+		h.asyncUpload = NewAsyncUploader(s3, local, opts.AsyncQueueSize, opts.AsyncMaxRetry)
+		h.asyncUpload.Start(opts.AsyncWorkers)
+	}
+	return h
+}
+
+// StopAsyncUploader gracefully shuts down the background upload worker.
+// Call this during server shutdown.
+func (h *Hybrid) StopAsyncUploader() {
+	if h.asyncUpload != nil {
+		h.asyncUpload.Stop()
+	}
 }
 
 // Head checks if an object exists, preferring local metadata.
@@ -76,13 +100,29 @@ func (h *Hybrid) Delete(ctx context.Context, key string) error {
 }
 
 // Put stores an object in both local storage and S3.
-// The local copy is written first, then uploaded to S3 from the local file.
-// If the S3 upload fails, the local copy remains in place as a valid cache entry.
+// If async upload is enabled, the S3 upload happens in the background.
 func (h *Hybrid) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	if err := h.local.Put(ctx, key, r, size); err != nil {
 		return fmt.Errorf("failed to store cache entry locally: %w", err)
 	}
 
+	if h.asyncUpload != nil {
+		if h.asyncUpload.Enqueue(key, size) {
+			slog.Debug("async S3 upload queued", "key", key, "size", size)
+		} else {
+			slog.Warn("async S3 upload queue full, falling back to sync", "key", key)
+			// Fall back to sync upload
+			if err := h.syncS3Upload(ctx, key); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return h.syncS3Upload(ctx, key)
+}
+
+func (h *Hybrid) syncS3Upload(ctx context.Context, key string) error {
 	localRC, localSize, _, exists, err := h.local.Get(ctx, key)
 	if err != nil {
 		return fmt.Errorf("failed to read locally stored cache entry: %w", err)
@@ -95,6 +135,6 @@ func (h *Hybrid) Put(ctx context.Context, key string, r io.Reader, size int64) e
 	if err := h.s3.Put(ctx, key, localRC, localSize); err != nil {
 		return fmt.Errorf("failed to store cache entry in S3: %w", err)
 	}
-
 	return nil
 }
+

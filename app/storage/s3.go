@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -12,7 +13,24 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+
+	"go_http_cache_server/metrics"
 )
+
+// RangeKey is a context key used to pass HTTP Range headers to S3 GetObject.
+type rangeKey struct{}
+
+// WithRange returns a new context with the Range header value.
+func WithRange(ctx context.Context, rangeVal string) context.Context {
+	return context.WithValue(ctx, rangeKey{}, rangeVal)
+}
+
+func getRange(ctx context.Context) string {
+	if v, ok := ctx.Value(rangeKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 // S3 implements Backend using Amazon S3 (or compatible services like MinIO).
 type S3 struct {
@@ -30,6 +48,7 @@ type S3Options struct {
 	Endpoint    string                  // optional, for MinIO and other S3-compatible services
 	Credentials aws.CredentialsProvider // optional
 	Concurrency int                     // number of concurrent part uploads; zero means default
+	RetryMax    int                     // max retries for S3 operations; zero means default
 }
 
 // NewS3 creates a new S3 backend.
@@ -48,6 +67,14 @@ func NewS3(ctx context.Context, opts S3Options) (*S3, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
+
+	// Configure retry
+	retryMax := opts.RetryMax
+	if retryMax <= 0 {
+		retryMax = 3
+	}
+	cfg.RetryMode = aws.RetryModeAdaptive
+	cfg.RetryMaxAttempts = retryMax
 
 	s3Opts := []func(*s3.Options){}
 	if opts.Endpoint != "" {
@@ -93,16 +120,21 @@ func isNotFound(err error) bool {
 
 // Head implements Backend.
 func (s *S3) Head(ctx context.Context, key string) (size int64, exists bool, err error) {
+	start := time.Now()
 	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.key(key)),
 	})
+	duration := time.Since(start)
 	if err != nil {
 		if isNotFound(err) {
+			metrics.S3RequestDuration("head", "not_found", duration)
 			return 0, false, nil
 		}
+		metrics.S3RequestDuration("head", "error", duration)
 		return 0, false, err
 	}
+	metrics.S3RequestDuration("head", "success", duration)
 
 	if out.ContentLength == nil {
 		return 0, true, nil
@@ -112,16 +144,26 @@ func (s *S3) Head(ctx context.Context, key string) (size int64, exists bool, err
 
 // Get implements Backend.
 func (s *S3) Get(ctx context.Context, key string) (rc io.ReadCloser, size int64, modTime time.Time, exists bool, err error) {
-	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+	input := &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.key(key)),
-	})
+	}
+	if rng := getRange(ctx); rng != "" {
+		input.Range = aws.String(rng)
+	}
+
+	start := time.Now()
+	out, err := s.client.GetObject(ctx, input)
+	duration := time.Since(start)
 	if err != nil {
 		if isNotFound(err) {
+			metrics.S3RequestDuration("get", "not_found", duration)
 			return nil, 0, time.Time{}, false, nil
 		}
+		metrics.S3RequestDuration("get", "error", duration)
 		return nil, 0, time.Time{}, false, err
 	}
+	metrics.S3RequestDuration("get", "success", duration)
 
 	var sz int64
 	if out.ContentLength != nil {
@@ -137,13 +179,17 @@ func (s *S3) Get(ctx context.Context, key string) (rc io.ReadCloser, size int64,
 
 // Delete implements Backend.
 func (s *S3) Delete(ctx context.Context, key string) error {
+	start := time.Now()
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.key(key)),
 	})
+	duration := time.Since(start)
 	if err != nil {
+		metrics.S3RequestDuration("delete", "error", duration)
 		return fmt.Errorf("failed to delete object from S3: %w", err)
 	}
+	metrics.S3RequestDuration("delete", "success", duration)
 	return nil
 }
 
@@ -158,9 +204,22 @@ func (s *S3) Put(ctx context.Context, key string, r io.Reader, size int64) error
 		input.ContentLength = aws.Int64(size)
 	}
 
+	start := time.Now()
 	_, err := s.uploader.Upload(ctx, input)
+	duration := time.Since(start)
 	if err != nil {
+		metrics.S3RequestDuration("put", "error", duration)
+		slog.Error("S3 upload failed", "key", key, "error", err)
 		return fmt.Errorf("failed to upload object to S3: %w", err)
 	}
+	metrics.S3RequestDuration("put", "success", duration)
 	return nil
+}
+
+// CheckBucket performs a lightweight bucket accessibility check.
+func (s *S3) CheckBucket(ctx context.Context) error {
+	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(s.bucket),
+	})
+	return err
 }

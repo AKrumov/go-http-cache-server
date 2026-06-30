@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go_http_cache_server/health"
+	"go_http_cache_server/middleware"
 )
 
 // mockBackend is a test implementation of storage.Backend.
@@ -814,4 +817,158 @@ func TestRunIncompleteAuthConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for incomplete auth config")
 	}
+}
+
+func TestHandleLivez(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/livez", nil)
+		cs.handleLivez(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if rr.Body.String() != "ok" {
+			t.Fatalf("body = %q, want ok", rr.Body.String())
+		}
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/livez", nil)
+		cs.handleLivez(rr, req)
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func TestHandleReadyz(t *testing.T) {
+	t.Run("no health registry", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		cs.handleReadyz(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("healthy", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		cs.health = health.NewRegistry()
+		cs.health.Register(&health.LivenessChecker{})
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		cs.handleReadyz(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("unhealthy", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		cs.health = health.NewRegistry()
+		cs.health.Register(&health.S3Checker{
+			NameVal: "s3",
+			CheckFn: func(ctx context.Context) error { return errors.New("s3 down") },
+		})
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		cs.handleReadyz(rr, req)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+		}
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/readyz", nil)
+		cs.handleReadyz(rr, req)
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func TestHandleVersion(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		old := version
+		version = "v1.2.3"
+		defer func() { version = old }()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/version", nil)
+		cs.handleVersion(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if !strings.Contains(rr.Body.String(), "v1.2.3") {
+			t.Fatalf("body = %q, want version v1.2.3", rr.Body.String())
+		}
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		t.Parallel()
+		cs := NewCacheServer(&mockBackend{}, 0)
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/version", nil)
+		cs.handleVersion(rr, req)
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("code = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func TestRequestIDMiddleware(t *testing.T) {
+	t.Parallel()
+	var capturedID string
+	handler := middleware.RequestID(func(w http.ResponseWriter, r *http.Request) {
+		capturedID = middleware.GetRequestID(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/cache/myid/foo", nil)
+	handler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("code = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if capturedID == "" {
+		t.Fatal("expected request ID to be set")
+	}
+	if rr.Header().Get("X-Request-ID") == "" {
+		t.Fatal("expected X-Request-ID response header")
+	}
+}
+
+func TestRateLimiter(t *testing.T) {
+	t.Run("allows requests", func(t *testing.T) {
+		t.Parallel()
+		rl := middleware.NewRateLimiter(10, 5)
+		if !rl.Allow("127.0.0.1:1234") {
+			t.Fatal("expected request to be allowed")
+		}
+	})
+
+	t.Run("blocks over limit", func(t *testing.T) {
+		t.Parallel()
+		rl := middleware.NewRateLimiter(0, 0.5) // 0.5 req/sec per IP, burst = 1
+		// First request should be allowed
+		if !rl.Allow("127.0.0.1:1234") {
+			t.Fatal("expected first request to be allowed")
+		}
+		// Immediate second request should be blocked
+		if rl.Allow("127.0.0.1:1234") {
+			t.Fatal("expected second request to be blocked")
+		}
+	})
 }

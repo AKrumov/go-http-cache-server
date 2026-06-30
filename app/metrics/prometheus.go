@@ -64,6 +64,62 @@ var (
 			Help: "Number of in-flight HTTP requests currently being handled.",
 		},
 	)
+	// Additional observability metrics
+	s3RequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gradle_cache_s3_request_duration_seconds",
+			Help:    "Duration of S3 requests by operation and result.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"operation", "result"},
+	)
+	localCacheEntries = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "gradle_cache_local_entries_total",
+			Help: "Number of entries in the local cache.",
+		},
+	)
+	localCacheSize = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "gradle_cache_local_size_bytes",
+			Help: "Total size of the local cache in bytes.",
+		},
+	)
+	localCleanupRuns = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gradle_cache_local_cleanup_runs_total",
+			Help: "Total number of local cache cleanup runs.",
+		},
+	)
+	localCleanupEvicted = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gradle_cache_local_cleanup_evicted_bytes_total",
+			Help: "Total bytes evicted by local cache cleanup.",
+		},
+	)
+	circuitBreakerState = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "gradle_cache_circuit_breaker_state",
+			Help: "Circuit breaker state: 0=closed, 1=open, 2=half-open.",
+		}, []string{"backend"},
+	)
+	rateLimitHits = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gradle_cache_rate_limit_hits_total",
+			Help: "Total number of requests rejected due to rate limiting.",
+		},
+	)
+	memoryCacheHits = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gradle_cache_memory_hits_total",
+			Help: "Total number of in-memory cache hits.",
+		},
+	)
+	memoryCacheMisses = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "gradle_cache_memory_misses_total",
+			Help: "Total number of in-memory cache misses.",
+		},
+	)
 )
 
 func init() {
@@ -77,6 +133,15 @@ func init() {
 		cacheStoredBytes,
 		cacheServedBytes,
 		inFlightRequests,
+		s3RequestDuration,
+		localCacheEntries,
+		localCacheSize,
+		localCleanupRuns,
+		localCleanupEvicted,
+		circuitBreakerState,
+		rateLimitHits,
+		memoryCacheHits,
+		memoryCacheMisses,
 	)
 }
 
@@ -119,4 +184,49 @@ func InFlightInc() {
 
 func InFlightDec() {
 	inFlightRequests.Dec()
+}
+
+// S3RequestDuration observes the duration of an S3 operation.
+func S3RequestDuration(operation, result string, duration time.Duration) {
+	s3RequestDuration.WithLabelValues(operation, result).Observe(duration.Seconds())
+}
+
+// SetLocalCacheEntries updates the local cache entries gauge.
+func SetLocalCacheEntries(n float64) {
+	localCacheEntries.Set(n)
+}
+
+// SetLocalCacheSize updates the local cache size gauge.
+func SetLocalCacheSize(bytes float64) {
+	localCacheSize.Set(bytes)
+}
+
+// LocalCleanupRun increments the cleanup run counter.
+func LocalCleanupRun() {
+	localCleanupRuns.Inc()
+}
+
+// LocalCleanupEvicted adds evicted bytes to the counter.
+func LocalCleanupEvicted(bytes float64) {
+	localCleanupEvicted.Add(bytes)
+}
+
+// SetCircuitBreakerState sets the circuit breaker state gauge.
+func SetCircuitBreakerState(backend string, state float64) {
+	circuitBreakerState.WithLabelValues(backend).Set(state)
+}
+
+// RateLimitHit increments the rate limit hit counter.
+func RateLimitHit() {
+	rateLimitHits.Inc()
+}
+
+// MemoryCacheHit increments the memory cache hit counter.
+func MemoryCacheHit() {
+	memoryCacheHits.Inc()
+}
+
+// MemoryCacheMiss increments the memory cache miss counter.
+func MemoryCacheMiss() {
+	memoryCacheMisses.Inc()
 }

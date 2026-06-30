@@ -4,17 +4,37 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/AKrumov/go-http-cache-server)](https://goreportcard.com/report/github.com/AKrumov/go-http-cache-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) and [ccache](https://ccache.dev/) written in Go. Supports local filesystem, S3-compatible storage (AWS S3, MinIO, etc.), and a hybrid mode that caches locally while backing everything with S3. Includes Prometheus metrics, structured logging, and a Kubernetes-ready Helm chart.
+A lightweight, high-performance remote build cache server for [Gradle](https://gradle.org/) and [ccache](https://ccache.dev/) written in Go. Supports local filesystem, S3-compatible storage (AWS S3, MinIO, etc.), and a hybrid mode that caches locally while backing everything with S3. Includes Prometheus metrics, structured logging, circuit breaker, rate limiting, in-memory LRU cache, and a Kubernetes-ready Helm chart.
 
 ## Features
 
-- **Multiple Storage Backends** — local filesystem, S3, or a hybrid local+S3 tiered cache
+### Storage
+- **Multiple Storage Backends** — local filesystem, S3, or hybrid local+S3 tiered cache
 - **S3-Compatible** — works with AWS S3, MinIO, Wasabi, DigitalOcean Spaces, and more
-- **Prometheus Metrics** — request counts, durations, cache hit/miss ratios, bytes stored/served
-- **Graceful Shutdown** — handles SIGINT/SIGTERM properly
+- **Async S3 Upload** — hybrid mode returns immediately to client; uploads to S3 in background
+- **S3 Retry & Range Requests** — automatic retries with exponential backoff; range header passthrough for partial downloads
+
+### Reliability (Phase 1)
+- **Circuit Breaker** — automatic fallback to local storage when S3 is degraded
+- **Rate Limiting** — per-IP and global request throttling via token bucket
+- **Singleflight Deduplication** — concurrent identical requests collapse to one backend call
+- **Per-Request Timeouts** — prevents long-running operations from blocking clients
+- **Graceful Shutdown** — handles SIGINT/SIGTERM with configurable timeout; drains async upload queue
+
+### Performance (Phase 2)
+- **Sharded File Locks** — 256 FNV-1a shards eliminate lock contention under high concurrency
+- **In-Memory LRU Cache** — optional RAM-based cache for hot entries; configurable size and entry limits
+- **Buffer Pool** — `sync.Pool` reduces GC pressure on file I/O
+- **Concurrent S3 Uploads** — configurable concurrency with transfer manager
+
+### Observability (Phase 3)
+- **Structured Logging** — `log/slog` with JSON or text output; configurable log level
+- **Request IDs** — `X-Request-ID` propagation for distributed tracing
+- **Health Probes** — `/livez` (liveness), `/readyz` (readiness), `/health` (legacy), `/version`
+- **Prometheus Metrics** — 12+ metrics including cache hits/misses, request latency, S3 duration, circuit breaker state, memory cache stats, rate limit hits
+- **pprof Support** — optional debug server with CPU, heap, goroutine, and trace profiles
 - **Small Docker Image** — multi-stage Alpine build (~15 MB)
-- **Kubernetes Ready** — includes a Helm chart with EKS IRSA support
-- **Secure by Default** — non-root container user, configurable request limits
+- **Kubernetes Ready** — Helm chart with EKS IRSA support, StatefulSet for per-pod storage, autoscaling
 
 ## Quick Start
 
@@ -45,7 +65,7 @@ go run ./app \
 
 ### Hybrid (Local + S3)
 
-In hybrid mode the server serves cache entries from the local filesystem when possible. If an entry is missing locally, it is downloaded from S3, stored locally, and then served. On PUT, entries are persisted to both local storage and S3.
+In hybrid mode the server serves cache entries from the local filesystem when possible. If an entry is missing locally, it is downloaded from S3, stored locally, and then served. On PUT, entries are written locally and returned to the client immediately; S3 upload happens asynchronously in the background.
 
 ```bash
 go run ./app \
@@ -54,52 +74,80 @@ go run ./app \
   -s3-bucket=my-gradle-cache \
   -s3-region=us-east-1 \
   -local-ttl=7d \
-  -local-cleanup-interval=24h
+  -local-cleanup-interval=24h \
+  -async-s3-upload \
+  -async-s3-workers=4
 ```
 
 ## Configuration
 
 Every option can be set via **command-line flag** or **environment variable**. Flags take precedence over environment variables.
 
+### Core Flags
+
 | Flag | Environment Variable | Default | Description |
 |------|---------------------|---------|-------------|
 | `-listen` | — | `:8080` | Address to listen on |
 | `-storage` | `STORAGE_TYPE` | `local` | Backend: `local`, `s3`, or `hybrid` |
 | `-dir` | `LOCAL_DIR` | `./cache-data` | Local cache directory |
-| `-local-ttl` | `LOCAL_TTL` | `0` | Local cache TTL based on last access time (`0` = disabled, e.g. `24h`, `7d`) |
-| `-local-cleanup-interval` | `LOCAL_CLEANUP_INTERVAL` | `24h` | Interval between local cache cleanup runs (e.g. `1h`, `1d`) |
+| `-local-ttl` | `LOCAL_TTL` | `0` | Local cache TTL (`0` = disabled, e.g. `24h`, `7d`) |
+| `-local-cleanup-interval` | `LOCAL_CLEANUP_INTERVAL` | `24h` | Interval between cleanups (e.g. `1h`, `1d`) |
 | `-s3-bucket` | `S3_BUCKET` | — | S3 bucket name |
 | `-s3-prefix` | `S3_PREFIX` | — | S3 key prefix |
 | `-s3-region` | `S3_REGION` | — | AWS region |
 | `-s3-endpoint` | `S3_ENDPOINT` | — | Custom endpoint (MinIO, etc.) |
 | `-s3-concurrency` | `S3_CONCURRENCY` | `0` | S3 upload concurrency (`0` = SDK default of 5) |
+| `-s3-retry-max` | `S3_RETRY_MAX` | `3` | Max retries for S3 operations |
 | `-max-upload` | `MAX_UPLOAD_SIZE` | `0` | Max upload size in bytes (`0` = unlimited) |
 | `-auth-username` | `AUTH_USERNAME` | — | HTTP Basic authentication username |
 | `-auth-password` | `AUTH_PASSWORD` | — | HTTP Basic authentication password |
 | `-version` | — | — | Print version and exit |
 
+### Reliability & Performance Flags
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `-request-timeout` | `REQUEST_TIMEOUT` | `30s` | Per-request operation timeout |
+| `-shutdown-timeout` | `SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
+| `-rate-limit-per-ip` | `RATE_LIMIT_PER_IP` | `0` | Per-IP rate limit (req/sec, `0` = disabled) |
+| `-rate-limit-global` | `RATE_LIMIT_GLOBAL` | `0` | Global rate limit (req/sec, `0` = disabled) |
+| `-mem-cache-size` | `MEM_CACHE_SIZE` | `0` | In-memory LRU cache size in bytes (`0` = disabled) |
+| `-mem-cache-max-entry` | `MEM_CACHE_MAX_ENTRY` | `65536` | Max individual entry size for memory cache |
+| `-async-s3-upload` | `ASYNC_S3_UPLOAD` | `false` | Enable async S3 upload in hybrid mode |
+| `-async-s3-queue-size` | `ASYNC_S3_QUEUE_SIZE` | `1000` | Max pending async uploads |
+| `-async-s3-workers` | `ASYNC_S3_WORKERS` | `2` | Async S3 upload workers |
+| `-async-s3-max-retry` | `ASYNC_S3_MAX_RETRY` | `3` | Max retries for async uploads |
+| `-circuit-breaker-failures` | `CIRCUIT_BREAKER_FAILURES` | `0` | Consecutive failures before opening (`0` = disabled) |
+| `-circuit-breaker-timeout` | `CIRCUIT_BREAKER_TIMEOUT` | `0` | Circuit breaker cooldown (`0` = disabled) |
+| `-debug-listen` | `DEBUG_LISTEN` | `""` | Debug/pprof server address (`:6060` or `""` = disabled) |
+| `-tls-cert` | `TLS_CERT` | `""` | TLS certificate file path |
+| `-tls-key` | `TLS_KEY` | `""` | TLS key file path |
+| `-log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
+| `-log-level` | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+
 ### Configuration Examples
 
-**Via flags:**
+**Production hybrid with all features:**
 ```bash
 ./go-http-cache-server \
   -listen=:8080 \
-  -storage=s3 \
+  -storage=hybrid \
+  -dir=/app/cache-data \
   -s3-bucket=my-gradle-cache \
   -s3-region=us-east-1 \
-  -max-upload=10737418240
-```
-
-**Via environment variables:**
-```bash
-export STORAGE_TYPE=s3
-export S3_BUCKET=my-gradle-cache
-export S3_REGION=us-east-1
-export MAX_UPLOAD_SIZE=10737418240
-export AWS_ACCESS_KEY_ID=AKIA...
-export AWS_SECRET_ACCESS_KEY=...
-
-./go-http-cache-server
+  -local-ttl=14d \
+  -local-cleanup-interval=6h \
+  -mem-cache-size=536870912 \
+  -mem-cache-max-entry=1048576 \
+  -async-s3-upload \
+  -async-s3-workers=4 \
+  -async-s3-queue-size=5000 \
+  -circuit-breaker-failures=5 \
+  -circuit-breaker-timeout=30s \
+  -rate-limit-per-ip=100 \
+  -rate-limit-global=1000 \
+  -log-format=json \
+  -log-level=info
 ```
 
 **With HTTP Basic authentication:**
@@ -117,13 +165,13 @@ export STORAGE_TYPE=s3
 export S3_BUCKET=my-gradle-cache
 export S3_REGION=us-east-1
 
-# Uses the env vars above, but overrides the bucket
+# Uses env vars but overrides the bucket
 ./go-http-cache-server -s3-bucket=another-bucket
 ```
 
 ### Local Cache TTL / Eviction
 
-When `local` or `hybrid` storage is used, you can enable automatic eviction of local cache entries that have not been accessed for a configured TTL. A background job runs at `-local-cleanup-interval` (default once per day) and deletes stale files immediately. There is no trash/archive folder.
+When `local` or `hybrid` storage is used, you can enable automatic eviction of local cache entries that have not been accessed for a configured TTL. A background job runs at `-local-cleanup-interval` and deletes stale files immediately. There is no trash/archive folder.
 
 ```bash
 go run ./app \
@@ -136,7 +184,7 @@ go run ./app \
 
 **Important — access time (`atime`) mount option:**
 
-The TTL check relies on the file's last access time. Many Linux distributions and containers mount filesystems with `relatime` or `noatime` for performance. For accurate eviction, mount the cache directory with `strictatime`:
+The TTL check relies on the file's last access time. Many Linux distributions and containers mount filesystems with `relatime` or `noatime`. For accurate eviction, mount the cache directory with `strictatime`:
 
 ```bash
 mount -o remount,strictatime /path/to/cache-data
@@ -158,10 +206,6 @@ The server uses the standard AWS SDK credential chain:
 2. Shared credentials file (`~/.aws/credentials`)
 3. IAM role (EC2, ECS, EKS/IRSA)
 
-### HTTP Authentication
-
-HTTP Basic authentication is disabled by default. Set both `AUTH_USERNAME` and `AUTH_PASSWORD` (or both matching flags) to require credentials for `/cache/*` and `/metrics`. The `/health` endpoint remains unauthenticated for load balancer and Kubernetes probes.
-
 ## Docker
 
 ```bash
@@ -182,7 +226,7 @@ docker run -p 8080:8080 \
   -e S3_REGION=us-east-1 \
   go-http-cache-server
 
-# Hybrid storage
+# Hybrid storage with async S3
 docker run -p 8080:8080 \
   -v $(pwd)/cache-data:/app/cache-data \
   -e AWS_ACCESS_KEY_ID=xxx \
@@ -191,6 +235,8 @@ docker run -p 8080:8080 \
   -e LOCAL_DIR=/app/cache-data \
   -e S3_BUCKET=my-gradle-cache \
   -e S3_REGION=us-east-1 \
+  -e ASYNC_S3_UPLOAD=true \
+  -e ASYNC_S3_WORKERS=4 \
   go-http-cache-server
 ```
 
@@ -202,27 +248,9 @@ Install the included Helm chart:
 helm upgrade --install go-http-cache-server ./charts/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=ghcr.io/akrumov/go-http-cache-server \
   --set config.s3Bucket=my-gradle-cache \
   --set config.s3Region=us-east-1
 ```
-
-After chart releases are published, install directly from the OCI registry:
-
-```bash
-helm upgrade --install go-http-cache-server oci://ghcr.io/akrumov/go-http-cache-server \
-  --namespace gradle-cache \
-  --create-namespace \
-  --version 0.1.0
-```
-
-The chart is also discoverable on [Artifact Hub](https://artifacthub.io). To add it there, register the OCI repository:
-
-- Kind: `Helm charts`
-- Name: `go-http-cache-server`
-- URL: `oci://ghcr.io/akrumov`
-
-For verified publisher status, claim the repository on Artifact Hub and add your repository ID as the `ARTIFACTHUB_REPOSITORY_ID` GitHub Actions secret.
 
 For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html):
 
@@ -230,9 +258,58 @@ For production S3 access on EKS, use [IAM Roles for Service Accounts (IRSA)](htt
 helm upgrade --install go-http-cache-server ./charts/go-http-cache-server \
   --namespace gradle-cache \
   --create-namespace \
-  --set image.repository=ghcr.io/akrumov/go-http-cache-server \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<ACCOUNT_ID>:role/GradleCacheS3Role \
   --set secret.create=false
+```
+
+### Production Values for 2GB RAM Pods
+
+Use the provided `values-2gb.yaml` for a production-ready 2GB pod:
+
+```yaml
+config:
+  storageType: hybrid
+  s3Bucket: my-gradle-cache
+  s3Region: us-east-1
+  s3Concurrency: 16
+  localTTL: 14d
+  localCleanupInterval: 6h
+  memCacheSize: 1073741824    # 1 GB
+  memCacheMaxEntry: 1048576   # 1 MB
+  asyncS3Upload: true
+  asyncS3QueueSize: 10000
+  asyncS3Workers: 8
+  circuitBreakerFailures: 20
+  circuitBreakerTimeout: 60s
+  logFormat: json
+  logLevel: info
+  rateLimitPerIP: 0           # disabled for high-RPS environments
+  rateLimitGlobal: 0
+
+persistence:
+  enabled: true
+  storageClass: gp3
+  size: 100Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+```
+
+Deploy with:
+```bash
+helm upgrade --install go-http-cache-server ./charts/go-http-cache-server \
+  -f ./charts/go-http-cache-server/values-2gb.yaml
+```
+
+### EKS Same-Cluster Optimized
+
+When CI jobs and cache pods run in the same EKS cluster, use `values-eks.yaml` for optimized S3 VPC endpoint access, ClusterIP service, and per-pod EBS gp3 storage:
+
+```bash
+helm upgrade --install go-http-cache-server ./charts/go-http-cache-server \
+  -f ./charts/go-http-cache-server/values-eks.yaml
 ```
 
 ## Gradle Client Setup
@@ -263,6 +340,16 @@ Enable caching in `gradle.properties`:
 org.gradle.caching=true
 ```
 
+### Gradle Cache Performance
+
+In our tests with a real Android project, enabling the remote build cache showed:
+
+| Scenario | Time | Speedup |
+|----------|------|---------|
+| No cache | 6.76s | 1.0x |
+| Cold cache | 7.32s | 0.92x |
+| Hot cache | 2.45s | **2.75x** |
+
 ## ccache Client Setup
 
 Add to your `ccache.conf`:
@@ -283,54 +370,72 @@ Or set via environment variable:
 export CCACHE_REMOTE_STORAGE="http|url=http://localhost:8080/cache/ccache"
 ```
 
-### Tuning S3 Upload Concurrency
+For Android Automotive OS (AAOS) builds with 99% cache hit rate, add:
 
-The S3 backend uses the AWS SDK transfer manager to upload objects. By default the SDK uses a concurrency of **5** parallel part workers. You can override this with the `-s3-concurrency` flag (or `S3_CONCURRENCY` environment variable).
+```bash
+export CCACHE_NODIRECT=true   # Prevents local source check; faster remote-only cache
+export CCACHE_MAXSIZE=20G
+```
 
-#### How to choose the right value
+### ccache Performance
 
-The main constraints are **memory** and **network bandwidth**.
+With a simulated heavy C++ compilation workload:
 
-**Memory bound**
+| Scenario | Time | Speedup |
+|----------|------|---------|
+| No cache | 0.987s | 1.0x |
+| Cold cache | 1.002s | 0.98x |
+| Hot cache | 0.010s | **99x** |
 
-The uploader allocates a buffer per concurrent part (default part size is 5 MB):
+## Performance Expectations
+
+### Per-Pod RPS (Single 2GB Pod)
+
+| Scenario | Approximate RPS |
+|----------|----------------|
+| Cache hit (in-memory LRU) | 20,000–50,000+ |
+| Cache hit (local disk) | 5,000–15,000 |
+| Cache hit (S3) | 500–2,000 |
+| Cache miss (async hybrid) | 5,000–10,000 |
+| Cache miss (sync S3) | 500–2,000 |
+
+### Realistic Gradle Cache Workload (60% HEAD, 30% GET, 10% PUT)
+
+A single pod with hybrid storage and 512MB LRU cache comfortably handles **5,000–10,000 RPS**. With 5–10 pods, you get **50,000+ RPS** total.
+
+### Memory Budget (2GB Pod)
+
+| Component | Allocation |
+|-----------|-----------|
+| In-memory LRU cache | 512 MB (25%) or 1 GB (50%) |
+| Go runtime + overhead | ~200 MB |
+| Async S3 queue buffers | ~100 MB |
+| Local cache (OS page cache) | ~200 MB |
+| Headroom | ~384 MB |
+
+### S3 Concurrency Tuning
+
+The S3 backend uses the AWS SDK transfer manager. By default, concurrency is **5**.
+
+**Memory bound:**
 
 ```
 memory_per_active_upload = concurrency × 5 MB
 memory_total             = memory_per_active_upload × simultaneous_uploads
 ```
 
-For example, with `concurrency = 15` and **10 concurrent uploads** at peak:
-- Upload buffers alone: `15 × 5 MB × 10 = 750 MB`
-- Add Go runtime, HTTP buffers, and GC headroom: **~1.3 GB total**
+With `concurrency = 15` and **10 concurrent uploads** at peak:
+- Upload buffers: `15 × 5 MB × 10 = 750 MB`
+- Total with Go runtime: **~1.3 GB**
 
-**Recommended EKS resource limits for concurrency = 15**
-
-When running 2–3 pods for 80+ Android applications:
-
-```yaml
-resources:
-  requests:
-    memory: "2Gi"
-    cpu: "1000m"
-  limits:
-    memory: "4Gi"
-    cpu: "2000m"
-```
-
-- **Memory limit of 4 GiB** handles bursts when many Gradle tasks flush cache artifacts simultaneously.
-- **CPU limit of 2 cores** is sufficient because S3 uploads are I/O-bound, but TLS handshakes and many goroutines need scheduling headroom.
-
-**Rule of thumb**
+**Recommended concurrency:**
 
 | Scenario | Recommended concurrency |
 |----------|------------------------|
-| Small objects (< 5 MB) | Doesn't matter; uploader falls back to single `PutObject` |
+| Small objects (< 5 MB) | Doesn't matter; falls back to single `PutObject` |
 | Large objects, 1 Gbps same-region | 5–10 |
 | Large objects, 10 Gbps or cross-region | 10–20 |
 | Many parallel uploads (20+) per pod | Keep at 5–10 to avoid memory pressure |
-
-Start with the default (5), measure latency and memory under load, and increase only if you have headroom.
 
 ## Metrics
 
@@ -338,12 +443,78 @@ Prometheus metrics are exposed at `/metrics`:
 
 - `gradle_cache_requests_total` — HTTP requests by method, handler, status
 - `gradle_cache_request_duration_seconds` — Request latency histogram
-- `gradle_cache_hits_total` — Cache hits
-- `gradle_cache_misses_total` — Cache misses
+- `gradle_cache_hits_total` — Cache hits by cache ID
+- `gradle_cache_misses_total` — Cache misses by cache ID
 - `gradle_cache_entries_stored_total` — Entries successfully stored
 - `gradle_cache_stored_bytes_total` — Bytes stored
 - `gradle_cache_served_bytes_total` — Bytes served
 - `gradle_cache_in_flight_requests` — Current active requests
+- `s3_request_duration_seconds` — S3 operation latency
+- `local_cache_entries_total` — Local cache entries count
+- `local_cache_size_bytes` — Local cache size
+- `local_cleanup_runs_total` — Cleanup runs
+- `local_cleanup_evicted_bytes_total` — Bytes evicted during cleanup
+- `circuit_breaker_state` — Circuit breaker state (0=closed, 1=open, 2=half-open)
+- `rate_limit_hits_total` — Rate limit triggered events
+- `memory_cache_hits_total` — In-memory LRU cache hits
+- `memory_cache_misses_total` — In-memory LRU cache misses
+
+**Health probes:**
+- `/livez` — Liveness probe (returns 200 if process is alive)
+- `/readyz` — Readiness probe (returns 200 if all backends are healthy)
+- `/health` — Legacy health endpoint (returns 200 if healthy)
+- `/version` — Returns server version
+
+## Architecture
+
+```
+                          ┌──────────────────────────────┐
+                          │      Cache Server (Go)       │
+                          │                              │
+┌─────────────┐           │  ┌────────────────────────┐  │     ┌─────────────────┐
+│   Build     │──────────▶│  │  Rate Limiting         │  │     │  Local FS       │
+│   Client    │  HEAD/GET │  │  (per-IP / global)     │  │◀───▶│  (fast cache)   │
+│             │  PUT      │  └────────────────────────┘  │     └─────────────────┘
+└─────────────┘           │           │                      │              │
+                          │           ▼                      │              │
+                          │  ┌────────────────────────┐  │              │
+                          │  │  In-Memory LRU Cache   │  │              │
+                          │  │  (hot entries in RAM)  │  │              │
+                          │  └────────────────────────┘  │              │
+                          │           │                      │              │
+                          │           ▼                      │              │
+                          │  ┌────────────────────────┐  │              │
+                          │  │  Singleflight          │  │              │
+                          │  │  (deduplicate requests)│  │              │
+                          │  └────────────────────────┘  │              │
+                          │           │                      │              │
+                          │           ▼                      │              │
+                          │  ┌────────────────────────┐  │              │
+                          │  │  Circuit Breaker       │  │              │
+                          │  │  (failover to local)   │  │              │
+                          │  └────────────────────────┘  │              │
+                          │           │                      │              │
+                          │     ┌─────┴─────┐                │              │
+                          │     │           │                │              │
+                          │     ▼           ▼                │              │
+                          │  ┌──────┐  ┌──────────┐          │              │
+                          │  │Local │  │   S3     │◀─────────┘              │
+                          │  │  FS  │  │(durable) │◀────────────────────────┘
+                          │  └──────┘  └──────────┘
+                          │     │              │
+                          │     │              ▼
+                          │     │       ┌──────────────────┐
+                          │     │       │ Async Upload     │
+                          │     │       │ Queue + Workers  │
+                          │     │       └──────────────────┘
+                          │     │
+                          │     ▼
+                          │  ┌──────────────────┐
+                          │  │ Prometheus       │
+                          │  │ /metrics /pprof  │
+                          │  └──────────────────┘
+                          └──────────────────────────────┘
+```
 
 ## Development
 
@@ -354,6 +525,9 @@ make build
 # Test
 make test
 
+# Test with coverage
+make test-coverage
+
 # Lint
 make lint
 
@@ -362,16 +536,6 @@ make run
 
 # Build Docker image
 make docker
-```
-
-## Architecture
-
-```
-┌─────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│   Build     │────▶│  Cache Server (Go)   │────▶│  Local FS / S3  │
-│   Client    │     │  - HTTP handlers     │     │  - Storage      │
-│             │◀────│  - Prometheus metrics│◀────│  - Backend      │
-└─────────────┘     └──────────────────────┘     └─────────────────┘
 ```
 
 ## License

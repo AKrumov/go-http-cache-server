@@ -1,11 +1,20 @@
 package main
 
-import "go_http_cache_server/storage"
+import (
+	"time"
+
+	"go_http_cache_server/health"
+	"go_http_cache_server/middleware"
+	"go_http_cache_server/storage"
+)
 
 type CacheServer struct {
-	backend   storage.Backend
-	maxUpload int64
-	auth      authConfig
+	backend        storage.Backend
+	maxUpload      int64
+	auth           authConfig
+	health         *health.Registry
+	rateLimiter    *middleware.RateLimiter
+	requestTimeout time.Duration
 }
 
 // NewCacheServer creates a new cache server with the given backend.

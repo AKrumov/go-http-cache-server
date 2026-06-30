@@ -26,6 +26,10 @@ go.work.sum
 # env file
 .env
 
+# Cache data directories
+cache-data/
+cache-data-test/
+
 # Editor/IDE
- .idea/
- .vscode/
+.idea/
+.vscode/

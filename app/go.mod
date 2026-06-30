@@ -1,6 +1,6 @@
 module go_http_cache_server
 
-go 1.26.2
+go 1.24
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
@@ -9,8 +9,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.18
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/aws/smithy-go v1.25.1
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
+	golang.org/x/sync v0.13.0
 	golang.org/x/sys v0.35.0
+	golang.org/x/time v0.11.0
 )
 
 require (

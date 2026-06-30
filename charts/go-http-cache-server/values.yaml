@@ -37,16 +37,53 @@ service:
   port: 80
 
 config:
+  # Logging
+  logFormat: "text"          # text or json
+  logLevel: "info"             # debug, info, warn, error
+
+  # Server timeouts
+  requestTimeout: "30s"
+  shutdownTimeout: "30s"
+
+  # Storage backend: local, s3, or hybrid
   storageType: s3
+
+  # Local storage
   localDir: /app/cache-data
+  localTTL: ""                 # e.g. "7d", "0" = disabled
+  localCleanupInterval: ""     # e.g. "1h", "1d"
+
+  # S3 storage
   s3Bucket: my-gradle-cache
   s3Prefix: gradle-cache
   s3Region: us-east-1
   s3Endpoint: ""
   s3Concurrency: 0
+  s3RetryMax: 3
+
+  # Max upload size per cache entry (0 = unlimited)
   maxUploadSize: ""
-  localTTL: ""
-  localCleanupInterval: ""
+
+  # In-memory LRU cache (0 = disabled)
+  memCacheSize: 0              # bytes, e.g. 67108864 for 64MB
+  memCacheMaxEntry: 65536      # max individual entry size in bytes
+
+  # Rate limiting (0 = disabled)
+  rateLimitPerIP: 0            # requests per second per IP
+  rateLimitGlobal: 0           # requests per second globally
+
+  # Async S3 upload (hybrid mode only)
+  asyncS3Upload: false
+  asyncS3QueueSize: 1000
+  asyncS3Workers: 2
+  asyncS3MaxRetry: 3
+
+  # Circuit breaker (0 = disabled)
+  circuitBreakerFailures: 0     # consecutive failures before opening
+  circuitBreakerTimeout: ""     # e.g. "30s", cooldown duration
+
+  # Debug / pprof server (empty = disabled)
+  debugListen: ""
 
 secret:
   create: true
@@ -58,6 +95,15 @@ secret:
     AUTH_USERNAME: ""
     AUTH_PASSWORD: ""
 
+# TLS configuration (enable by setting cert and key paths)
+tls:
+  enabled: false
+  # Existing secret containing tls.crt and tls.key
+  existingSecret: ""
+  # Or provide cert and key directly (will create a secret)
+  cert: ""
+  key: ""
+
 args: []
 
 resources:
@@ -68,9 +114,10 @@ resources:
     memory: 1Gi
     cpu: 1000m
 
+# Use the new /livez and /readyz endpoints from Phase 3 Observability
 livenessProbe:
   httpGet:
-    path: /health
+    path: /livez
     port: http
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -79,7 +126,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /health
+    path: /readyz
     port: http
   initialDelaySeconds: 3
   periodSeconds: 5
@@ -89,7 +136,6 @@ readinessProbe:
 persistence:
   enabled: false
   mountPath: /app/cache-data
-  existingClaim: ""
   storageClass: ""
   accessModes:
     - ReadWriteOnce

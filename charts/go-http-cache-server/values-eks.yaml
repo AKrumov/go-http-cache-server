@@ -1,0 +1,143 @@
+# EKS-optimized values for AAOS builds
+# Same cluster = cache pods + CI jobs in one EKS cluster
+# S3 access via AWS VPC endpoint = fast, no NAT costs
+# Save as: eks-values.yaml
+# Install: helm install cache charts/go-http-cache-server -f eks-values.yaml
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/akrumov/go-http-cache-server
+  pullPolicy: IfNotPresent
+  tag: ""
+
+serviceAccount:
+  create: true
+  # If using IRSA for S3 access, annotate:
+  # annotations:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/cache-server-s3-role
+
+config:
+  # ─── Logging ───
+  logFormat: "json"
+  logLevel: "info"
+  requestTimeout: "30s"
+  shutdownTimeout: "30s"
+
+  # ─── Storage: hybrid (local fast + S3 durable) ───
+  storageType: "hybrid"
+  localDir: /app/cache-data
+  localTTL: "14d"           # Keep hot entries locally for 2 weeks
+  localCleanupInterval: "6h"
+
+  # ─── S3 ───
+  # Leave endpoint empty — AWS SDK auto-uses VPC Gateway endpoint
+  # If you have a custom endpoint (MinIO, etc.), set it here
+  s3Bucket: "my-company-aaos-cache"
+  s3Prefix: "ccache"
+  s3Region: "us-east-1"
+  s3Endpoint: ""            # "" = AWS S3 via VPC endpoint
+  s3Concurrency: 16         # High concurrency — S3 from EKS is fast
+  s3RetryMax: 3
+
+  # ─── Upload Limits ───
+  maxUploadSize: "536870912"  # 512 MB max per entry (AAOS .a files are big)
+
+  # ─── Memory Cache ───
+  # 1GB = 50% of 2GB RAM. AAOS HEAD checks are tiny; keep metadata hot
+  memCacheSize: 1073741824   # 1 GB
+  memCacheMaxEntry: 1048576  # 1 MB — larger entries stay on disk
+
+  # ─── Rate Limiting: DISABLED ───
+  # CI farm generates 1000+ concurrent requests
+  rateLimitPerIP: 0
+  rateLimitGlobal: 0
+
+  # ─── Async S3 Upload ───
+  # AAOS builds = massive upload storms. Aggressive async settings.
+  asyncS3Upload: true
+  asyncS3QueueSize: 20000   # 20K pending uploads (AAOS has many misses)
+  asyncS3Workers: 8         # 8 upload workers (high S3 throughput from EKS)
+  asyncS3MaxRetry: 3
+
+  # ─── Circuit Breaker ───
+  # S3 via VPC endpoint is very reliable; allow more failures before tripping
+  circuitBreakerFailures: 20
+  circuitBreakerTimeout: "60s"
+
+  # ─── Debug / pprof ───
+  # Enable for profiling, then disable. Use kubectl port-forward for access.
+  debugListen: ""
+
+# ─── TLS (internal cluster only — disable for ClusterIP) ───
+tls:
+  enabled: false
+
+# ─── Resources: 2GB RAM pod ───
+resources:
+  requests:
+    memory: 1536Mi           # 1.5 GB scheduled
+    cpu: 1000m                # 1 core — hash checks are CPU intensive
+  limits:
+    memory: 2048Mi           # 2 GB hard cap
+    cpu: 4000m                # 4 cores burst during compile storms
+
+# ─── Probes ───
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# ─── Persistence: EBS gp3 per pod ───
+# Each pod gets its own EBS volume for local cache.
+# This avoids EFS latency for large AAOS entries.
+# If you want shared cache across pods, use EFS instead (slower).
+persistence:
+  enabled: true
+  storageClass: "gp3"       # AWS EBS gp3 = cheap, fast, independent per pod
+  size: 100Gi               # 100 GB local cache per pod
+  accessModes:
+    - ReadWriteOnce
+  mountPath: /app/cache-data
+
+# ─── Autoscaling ───
+# CI farm can burst from 1 to 20 pods depending on parallel builds
+autoscaling:
+  enabled: true
+  minReplicas: 3             # Always 3 pods for HA
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+# ─── Service: ClusterIP (internal only) ───
+# CI jobs in the same EKS cluster connect directly via internal DNS.
+# No Ingress, no LoadBalancer — sub-millisecond latency.
+service:
+  type: ClusterIP
+  port: 80
+
+# ─── Pod topology: spread across nodes for HA ───
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: go-http-cache-server
+          topologyKey: kubernetes.io/hostname
+
+nodeSelector: {}
+tolerations: []

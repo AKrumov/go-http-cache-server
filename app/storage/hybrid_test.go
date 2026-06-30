@@ -150,7 +150,7 @@ func TestHybridHead(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			h := NewHybrid(tt.local, tt.s3)
+			h := NewHybrid(tt.local, tt.s3, HybridOptions{})
 			size, exists, err := h.Head(ctx, "k")
 			if tt.wantErr != nil {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr.Error()) {
@@ -190,7 +190,7 @@ func TestHybridGetLocalExists(t *testing.T) {
 			},
 		},
 	}
-	h := NewHybrid(local, s3)
+	h := NewHybrid(local, s3, HybridOptions{})
 
 	rc, size, modTime, exists, err := h.Get(ctx, "k")
 	if err != nil {
@@ -236,7 +236,7 @@ func TestHybridGetBackfillsFromS3(t *testing.T) {
 			},
 		},
 	}
-	h := NewHybrid(local, s3)
+	h := NewHybrid(local, s3, HybridOptions{})
 
 	rc, size, modTime, exists, err := h.Get(ctx, "k")
 	if err != nil {
@@ -279,7 +279,7 @@ func TestHybridGetMissingEverywhere(t *testing.T) {
 			},
 		},
 	}
-	h := NewHybrid(local, s3)
+	h := NewHybrid(local, s3, HybridOptions{})
 
 	_, _, _, exists, err := h.Get(ctx, "k")
 	if err != nil {
@@ -313,7 +313,7 @@ func TestHybridGetS3Error(t *testing.T) {
 			},
 		},
 	}
-	h := NewHybrid(local, s3)
+	h := NewHybrid(local, s3, HybridOptions{})
 
 	_, _, _, _, err := h.Get(ctx, "k")
 	if !errors.Is(err, wantErr) {
@@ -343,7 +343,7 @@ func TestHybridGetS3ReadError(t *testing.T) {
 			},
 		},
 	}
-	h := NewHybrid(local, s3)
+	h := NewHybrid(local, s3, HybridOptions{})
 
 	_, _, _, _, err := h.Get(ctx, "k")
 	if err == nil {
@@ -373,7 +373,7 @@ func TestHybridGetBackfillError(t *testing.T) {
 			},
 		},
 	}
-	h := NewHybrid(local, s3)
+	h := NewHybrid(local, s3, HybridOptions{})
 
 	_, _, _, _, err := h.Get(ctx, "k")
 	if err == nil || !strings.Contains(err.Error(), wantErr.Error()) {
@@ -482,7 +482,7 @@ func TestHybridPut(t *testing.T) {
 			t.Parallel()
 			localSpy := &spyBackend{mockBackend: *tt.local}
 			s3Spy := &spyBackend{mockBackend: *tt.s3}
-			h := NewHybrid(localSpy, s3Spy)
+			h := NewHybrid(localSpy, s3Spy, HybridOptions{})
 
 			err := h.Put(ctx, "k", bytes.NewReader([]byte("payload")), 7)
 			if tt.wantErr != nil {
@@ -555,7 +555,7 @@ func TestHybridDelete(t *testing.T) {
 			t.Parallel()
 			localSpy := &spyBackend{mockBackend: *tt.local}
 			s3Spy := &spyBackend{mockBackend: *tt.s3}
-			h := NewHybrid(localSpy, s3Spy)
+			h := NewHybrid(localSpy, s3Spy, HybridOptions{})
 
 			err := h.Delete(ctx, "k")
 			if tt.wantErr != nil {

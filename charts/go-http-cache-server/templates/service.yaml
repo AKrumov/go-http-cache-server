@@ -11,5 +11,11 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.config.debugListen }}
+    - port: 6060
+      targetPort: debug
+      protocol: TCP
+      name: debug
+    {{- end }}
   selector:
     {{- include "go-http-cache-server.selectorLabels" . | nindent 4 }}
